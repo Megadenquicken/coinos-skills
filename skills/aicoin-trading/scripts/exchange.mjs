@@ -295,6 +295,20 @@ cli({
     await ex.loadMarkets();
     const mkt = ex.markets[symbol];
 
+    // Round contract amount to market precision/min (e.g. OKX BTC swap = 0.01 contract step)
+    // Avoids the old `Math.max(1, Math.round(x))` floor that broke sub-1-contract orders.
+    const roundContracts = (raw) => {
+      const minStep = mkt.precision?.amount || mkt.limits?.amount?.min || 1;
+      const minAmt = mkt.limits?.amount?.min || minStep;
+      let v = Number(raw);
+      if (!isFinite(v) || v <= 0) return minAmt;
+      // Clamp to min first so amountToPrecision doesn't throw on values < precision step
+      if (v < minAmt) v = minAmt;
+      try { v = Number(ex.amountToPrecision(symbol, v)); } catch { v = Math.round(v / minStep) * minStep; }
+      if (v < minAmt) v = minAmt;
+      return v;
+    };
+
     // cost param: user says "用XU做多" → calculate amount from USDT margin budget
     if (cost && mkt?.contractSize && market_type && market_type !== 'spot') {
       const tick = await ex.fetchTicker(symbol);
@@ -308,12 +322,12 @@ cli({
           if (pos?.leverage) lev = Number(pos.leverage);
         } catch {}
       }
-      amount = Math.max(1, Math.round(Number(cost) * lev / (mkt.contractSize * curP)));
+      amount = roundContracts(Number(cost) * lev / (mkt.contractSize * curP));
     }
 
     // Auto-convert: non-integer amount on contract = user gave base currency (e.g. 0.01 BTC → 1 contract)
     if (!cost && mkt?.contractSize && !Number.isInteger(Number(amount))) {
-      amount = Math.max(1, Math.round(Number(amount) / mkt.contractSize));
+      amount = roundContracts(Number(amount) / mkt.contractSize);
     }
 
     const pendingOrder = { exchange, symbol, type, side, amount, price, market_type, params, timestamp: Date.now() };
