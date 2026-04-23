@@ -45,7 +45,21 @@ const LOG_FILE = resolve(FT_DIR, 'freqtrade.log');
 const API_PORT = process.env.FREQTRADE_PORT || '8080';
 const ENV_FILE = resolve(process.env.HOME || '', '.openclaw', 'workspace', '.env');
 
-const FT_BIN = resolve(VENV_DIR, 'bin', 'freqtrade');
+// Prefer a freqtrade that's already on PATH (e.g. Hermes / Claude Code
+// pods inherit it from the freqtradeorg/freqtrade:stable base image at
+// /home/ftuser/.local/bin/freqtrade). Without this, every user pod
+// reinstalls freqtrade into $HOME/.freqtrade/source/.venv by cloning the
+// upstream repo and running setup.sh — burns several minutes and ~500MB
+// of disk per user, duplicating what the image already ships.
+// Fall back to the venv path for local laptops without a system install,
+// so the setup.sh code path still works there.
+const FT_BIN = (() => {
+  try {
+    const sys = execSync('command -v freqtrade', { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (sys && existsSync(sys)) return sys;
+  } catch {}
+  return resolve(VENV_DIR, 'bin', 'freqtrade');
+})();
 
 function run(cmd, opts = {}) {
   return execSync(cmd, { encoding: 'utf-8', timeout: 600000, ...opts }).trim();
