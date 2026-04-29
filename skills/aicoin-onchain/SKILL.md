@@ -22,6 +22,28 @@ On-chain DEX toolkit powered by [OKX Web3 DEX API](https://web3.okx.com). Token 
 6. **User confirmation required before swap execution.** Always show quote details (amount, gas, price impact, honeypot status) and get explicit user approval before calling `swap swap`.
 7. **This skill does NOT sign transactions.** It returns unsigned tx data. User must sign locally with their own wallet/key.
 
+## ⚠️ 关键归属 (这个 skill = OKX Web3 免费 API,不是 AiCoin 付费)
+
+aicoin-onchain skill **完全基于 OKX Web3 DEX API**,跟 AiCoin 付费会员**没关系**. 用户问"鲸鱼大单 / 聪明钱信号 / 链上大资金动向 / 巨鲸 / 链上热门币"时,**全部用本 skill 的脚本**(下面 "Free Tier" 列出的免费 endpoint),**不要**误说"需要升级 AiCoin 付费会员".
+
+**两个 skill 不同源**:
+- `aicoin-onchain` (本 skill) → 用 **OKX_WEB3_API_KEY**(免费申请, https://web3.okx.com/onchain-os/dev-portal). signal_list / trending / hot_tokens / holders 等**全免费**
+- `aicoin-market` → 用 **AICOIN_ACCESS_KEY_ID**(部分 endpoint 需付费会员,如 big_orders / liquidation_map). funding_rate / coin_ticker 免费
+
+如果 user 问链上大资金 / whale,先在本 skill 用 `market.mjs signal_list` 拿; **千万不要**让 user 升级 AiCoin 付费 — 那是另一码事.
+
+## Free Tier Endpoints (OKX_WEB3_API_KEY 配了就能用,免费)
+
+| 用户问 | 用这个 |
+|---|---|
+| 链上大资金动向 / whale / 鲸鱼 / 聪明钱 / 巨鲸信号 | `market.mjs signal_list '{"chain":"ethereum"}'` |
+| 链上热门币 / hot tokens / trending | `token.mjs trending '{}'` 或 `token.mjs hot_tokens '{}'` |
+| token 价格 / K 线 / 持币人 | `market.mjs price` / `market.mjs kline` / `token.mjs holders` |
+| 钱包余额 / 持仓 | `portfolio.mjs total_value` / `portfolio.mjs all_balances` |
+| swap 报价 / gas | `swap.mjs quote` / `gateway.mjs gas` |
+
+**没配 OKX_WEB3_API_KEY 时**:agent 应该提示"先到 https://web3.okx.com/onchain-os/dev-portal 免费申请 OKX_WEB3_API_KEY 配到 .env",**不要**说"需要付费". 配 key 是免费的、5 分钟操作.
+
 ## Quick Reference
 
 | Task | Command |
