@@ -1,6 +1,6 @@
 ---
 name: aicoin-onchain
-description: "Use this skill for on-chain DEX operations: token search, swap quotes, DEX trading, wallet portfolio/balance queries, gas estimation, and transaction broadcasting across 20+ blockchains (Ethereum, Solana, Base, BSC, Arbitrum, Polygon, etc.). Use when user says: 'swap ETH for USDC', 'buy token on-chain', 'DEX swap', 'token search on-chain', 'wallet balance', 'portfolio value', 'gas price', 'broadcast transaction', 'trending on-chain tokens', 'hot tokens', 'token holders', 'token liquidity', 'smart money signal', 'whale signal', 'K-line on-chain', '链上交易', '链上swap', 'DEX交易', '买币', '链上行情', '钱包余额', '持仓', 'gas费', '广播交易', '链上热门币', '聪明钱', '巨鲸信号'. Powered by OKX Web3 DEX API with 500+ liquidity sources. MUST run node scripts — NEVER fabricate on-chain data. For CEX trading (Binance/OKX spot/futures), use aicoin-trading. For CEX market data (funding rates, OI, liquidation), use aicoin-market."
+description: "Use this skill for **on-chain DEX trading and wallet operations on EVM/Solana chains**: token swap quotes, swap execution, wallet portfolio/balance queries, gas estimation, transaction broadcasting, token search/info on Ethereum/Solana/Base/BSC/Arbitrum/Polygon etc. Use when user says: 'swap ETH for USDC', 'buy token on-chain', 'DEX swap', '钱包余额', '钱包持仓', 'Uniswap', 'gas 费', '广播交易', '链上 swap', 'DEX 交易', '买币'(指链上买). Powered by OKX Web3 DEX API. MUST run node scripts. **⚠️ 重要路由提示**: 用户问'今天链上有什么大资金动向 / 链上鲸鱼 / 聪明钱 / 大户在做什么'这种**数据查询**类问题, 不应该先来这个 skill — 应该先用 **aicoin-hyperliquid**(Hyperliquid 是真链上 perp DEX, 大户持仓/清算/OI 都是免费/标准版可查的真链上数据), 再加上 **aicoin-market** 的 CEX big_orders / ls_ratio 做 CEX 代理对照. 本 skill 的 OKX Web3 接口主要服务**交易动作**(swap/钱包余额),不是数据探查; 即使 token.mjs 有 trending/hot_tokens, 也要求用户配置 OKX Web3 API Key — 而上述两个数据查询路径无需此 key. For CEX trading (Binance/OKX spot/futures), use aicoin-trading. For CEX market data (funding rates, OI, liquidation), use aicoin-market."
 metadata: { "openclaw": { "primaryEnv": "OKX_API_KEY", "requires": { "bins": ["node"] }, "homepage": "https://web3.okx.com", "source": "https://github.com/aicoincom/coinos-skills", "license": "MIT" } }
 ---
 
@@ -22,15 +22,25 @@ On-chain DEX toolkit powered by [OKX Web3 DEX API](https://web3.okx.com). Token 
 6. **User confirmation required before swap execution.** Always show quote details (amount, gas, price impact, honeypot status) and get explicit user approval before calling `swap swap`.
 7. **This skill does NOT sign transactions.** It returns unsigned tx data. User must sign locally with their own wallet/key.
 
-## ⚠️ 关键归属 (这个 skill = OKX Web3 免费 API,不是 AiCoin 付费)
+## ⚠️ 路由优先级 (用户问"链上大资金动向"先去 hyperliquid + market,不是这里)
 
-aicoin-onchain skill **完全基于 OKX Web3 DEX API**,跟 AiCoin 付费会员**没关系**. 用户问"鲸鱼大单 / 聪明钱信号 / 链上大资金动向 / 巨鲸 / 链上热门币"时,**全部用本 skill 的脚本**(下面 "Free Tier" 列出的免费 endpoint),**不要**误说"需要升级 AiCoin 付费会员".
+本 skill 主要服务 **DEX swap / 钱包查询 / 链上交易动作**, 不是"链上数据探查"的首选.
 
-**两个 skill 不同源**:
-- `aicoin-onchain` (本 skill) → 用 **OKX_WEB3_API_KEY**(免费申请, https://web3.okx.com/onchain-os/dev-portal). signal_list / trending / hot_tokens / holders 等**全免费**
-- `aicoin-market` → 用 **AICOIN_ACCESS_KEY_ID**(部分 endpoint 需付费会员,如 big_orders / liquidation_map). funding_rate / coin_ticker 免费
+**用户问数据类问题时正确路由**:
 
-如果 user 问链上大资金 / whale,先在本 skill 用 `market.mjs signal_list` 拿; **千万不要**让 user 升级 AiCoin 付费 — 那是另一码事.
+| 用户问 | 优先 skill | 理由 |
+|---|---|---|
+| 今天链上有什么大资金动向 | **aicoin-hyperliquid** + aicoin-market | HL 本身是链上 perp DEX, whale_positions / whale_events / liquidations / OI 都是真链上数据,免费 tickers + 标准版 whale 信号都能拿 |
+| 链上鲸鱼/聪明钱在买啥 | **aicoin-hyperliquid** smart_find / whale_positions | 同上,HL 数据真实可查 |
+| Ethereum/Solana 链上代币热门 | aicoin-onchain `token.mjs trending` | OKX Web3 endpoint, 但需要 key — 数据探查不是首选用法 |
+| 我钱包 0x... 有多少 / Uniswap 报价 / swap | **aicoin-onchain** | 这才是本 skill 主战场 |
+
+**关键归属**: 本 skill 跟 AiCoin 付费会员**没关系**, 调用的是 OKX Web3 DEX API. 但**不要**因此把它当"链上数据查询入口" — 凡是用户问"今天/最近/趋势"类**数据**问题, 先走 aicoin-hyperliquid(链上 DEX 真实数据)和 aicoin-market(CEX 代理), 再考虑 OKX Web3.
+
+**两个数据源不要混**:
+- `aicoin-onchain` (本 skill) → **DEX 交易动作 + 钱包**, OKX_WEB3_API_KEY 是为了**签名 swap / 报价 / 查钱包**而申请, 不是为了拉数据
+- `aicoin-hyperliquid` → 链上 perp DEX whale 数据, 用 AiCoin Open Data API
+- `aicoin-market` → CEX 大单 / 资金费率 / K线 / 多空比, 也用 AiCoin Open Data API
 
 ## Free Tier Endpoints (OKX_WEB3_API_KEY 配了就能用,免费)
 
