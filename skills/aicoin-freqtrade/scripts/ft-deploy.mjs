@@ -624,7 +624,7 @@ const actions = {
 
     console.error(`Running backtest: strategy=${strategy}, timeframe=${timeframe}${timerange ? `, timerange=${timerange}` : ''}...`);
     const rawOutput = run(
-      `${proxyPrefix}${FT_BIN} backtesting --config ${CONFIG_PATH} --strategy ${strategy} --timeframe ${timeframe}${timerangeArg}${pairsArg} --userdir ${USER_DATA}`,
+      `${proxyPrefix}${FT_BIN} backtesting --config ${CONFIG_PATH} --strategy ${strategy} --strategy-path ${STRAT_DIR} --timeframe ${timeframe}${timerangeArg}${pairsArg} --userdir ${USER_DATA}`,
       { timeout: 600000 }
     );
     const output = rawOutput
@@ -702,7 +702,7 @@ const actions = {
 
     console.error(`Running hyperopt: strategy=${strategy}, epochs=${epochs}, jobs=${jobs}, spaces=${spaces}`);
     const output = run(
-      `${proxyPrefix}${FT_BIN} hyperopt --config ${CONFIG_PATH} --strategy ${strategy} --timeframe ${timeframe}${timerangeArg} --userdir ${USER_DATA} --hyperopt-loss ${lossFunc} --spaces ${spaces} --epochs ${epochs} -j ${jobs} --min-trades ${minTrades}`,
+      `${proxyPrefix}${FT_BIN} hyperopt --config ${CONFIG_PATH} --strategy ${strategy} --strategy-path ${STRAT_DIR} --timeframe ${timeframe}${timerangeArg} --userdir ${USER_DATA} --hyperopt-loss ${lossFunc} --spaces ${spaces} --epochs ${epochs} -j ${jobs} --min-trades ${minTrades}`,
       { timeout: 1800000 }
     );
 
