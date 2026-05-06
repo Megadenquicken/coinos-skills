@@ -116,14 +116,20 @@ async function getExchange(id, marketType, skipAuth = false) {
 // createOrder with OKX net-mode posSide fallback
 async function placeOrder(ex, symbol, type, side, amount, price, params, exchange, marketType) {
   const p = { ...(params || {}) };
-  if (exchange === 'okx' && marketType && marketType !== 'spot' && !p.posSide) {
+  const isOkxSwap = exchange === 'okx' && marketType && marketType !== 'spot';
+  if (isOkxSwap && !p.posSide) {
     p.posSide = p.reduceOnly ? (side === 'buy' ? 'short' : 'long') : (side === 'buy' ? 'long' : 'short');
   }
   try {
     return await ex.createOrder(symbol, type, side, amount, price, p);
   } catch (e) {
-    // OKX net mode doesn't accept posSide — retry without it
-    if (String(e).includes('posSide') || String(e).includes('51000')) {
+    // OKX net mode 不接受 posSide → retry 一次。但仅限 OKX swap/futures
+    // 且 error 真是 posSide 相关。早期版本看 51000 就 retry,导致 OKX
+    // race(订单已提交但响应带 51000 警告)时重复下单(dogfood 命中过 ETH
+    // spot 限价被挂两次)。spot 不可能有 posSide 问题,绝不在 spot 上 retry。
+    const errMsg = String(e);
+    const isPosSideError = isOkxSwap && p.posSide && errMsg.includes('posSide');
+    if (isPosSideError) {
       delete p.posSide;
       return await ex.createOrder(symbol, type, side, amount, price, p);
     }
