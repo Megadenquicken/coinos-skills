@@ -726,6 +726,11 @@ const actions = {
     const indicators = params.indicators || null;
     const entryLogic = params.entry_logic || null;
     const exitLogic = params.exit_logic || null;
+    const direction = params.direction || 'long';
+
+    if (!['long', 'short', 'both'].includes(direction)) {
+      throw new Error(`direction must be "long", "short", or "both" (default: "long")`);
+    }
 
     if (indicators) {
       const invalid = indicators.filter((i) => !AVAILABLE_INDICATORS.includes(i.toLowerCase()));
@@ -739,13 +744,13 @@ const actions = {
     const usingFreeKey = !KEY || KEY === defaultKey;
     const paidUsed = [...ds].filter((d) => d in PAID_DATA);
 
-    const code = buildStrategyCode(name, tf, desc, ds, indicators, entryLogic, exitLogic);
+    const code = buildStrategyCode(name, tf, desc, ds, indicators, entryLogic, exitLogic, direction);
     writeFileSync(dest, code);
 
     const result = {
       success: true, strategy: name, file: dest,
       mode: ENV ? 'coinclaw' : 'host', engine: ENV ? ENV.engine : null,
-      timeframe: tf,
+      timeframe: tf, direction,
       indicators: indicators || ['rsi', 'bb', 'ema', 'volume_sma'],
       aicoin_data: [...ds],
       note: ds.size

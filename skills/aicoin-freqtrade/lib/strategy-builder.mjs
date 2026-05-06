@@ -32,7 +32,7 @@ export const PAID_DATA = {
   liquidation_map: '高级版 ($299/mo)',
 };
 
-export function buildStrategyCode(name, tf, desc, ds, indicators, entryLogic, exitLogic) {
+export function buildStrategyCode(name, tf, desc, ds, indicators, entryLogic, exitLogic, direction = 'long') {
   const L = [];  // lines
   const has = (k) => ds.has(k);
   const any = ds.size > 0;
@@ -56,7 +56,8 @@ export function buildStrategyCode(name, tf, desc, ds, indicators, entryLogic, ex
   L.push(`class ${name}(IStrategy):`);
   L.push(`    INTERFACE_VERSION = 3`);
   L.push(`    timeframe = '${tf}'`);
-  L.push(`    can_short = True`);
+  const canShort = direction === 'both' || direction === 'short';
+  L.push(`    can_short = ${canShort ? 'True' : 'False'}`);
   L.push(``);
   L.push(`    minimal_roi = {"0": 0.05, "60": 0.03, "120": 0.01}`);
   L.push(`    stoploss = -0.05`);
@@ -425,62 +426,91 @@ export function buildStrategyCode(name, tf, desc, ds, indicators, entryLogic, ex
   if (has('big_orders'))       { longC.push("(dataframe['whale_signal'] >= -0.3)");  shortC.push("(dataframe['whale_signal'] <= 0.3)"); }
   if (has('liquidation_map'))  { longC.push("(dataframe['liq_bias'] >= -0.3)");      shortC.push("(dataframe['liq_bias'] <= 0.3)"); }
 
+  const doLong = direction === 'long' || direction === 'both';
+  const doShort = direction === 'short' || direction === 'both';
+
   L.push(`    def populate_entry_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:`);
-  L.push(`        dataframe.loc[`);
-  longC.forEach((c, i) => L.push(`            ${c}${i < longC.length - 1 ? ' &' : ','}`));
-  L.push(`            'enter_long'] = 1`);
-  L.push(``);
-  L.push(`        dataframe.loc[`);
-  shortC.forEach((c, i) => L.push(`            ${c}${i < shortC.length - 1 ? ' &' : ','}`));
-  L.push(`            'enter_short'] = 1`);
-  L.push(``);
+  if (doLong) {
+    L.push(`        dataframe.loc[`);
+    longC.forEach((c, i) => L.push(`            ${c}${i < longC.length - 1 ? ' &' : ','}`));
+    L.push(`            'enter_long'] = 1`);
+    L.push(``);
+  }
+  if (doShort) {
+    L.push(`        dataframe.loc[`);
+    shortC.forEach((c, i) => L.push(`            ${c}${i < shortC.length - 1 ? ' &' : ','}`));
+    L.push(`            'enter_short'] = 1`);
+    L.push(``);
+  }
   L.push(`        return dataframe`);
   L.push(``);
 
   L.push(`    def populate_exit_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:`);
   if (exitLogic && exitLogic.long) {
-    L.push(`        dataframe.loc[`);
-    L.push(`            (${exitLogic.long}),`);
-    L.push(`            'exit_long'] = 1`);
-    L.push(`        dataframe.loc[`);
-    L.push(`            (${exitLogic.short || exitLogic.long}),`);
-    L.push(`            'exit_short'] = 1`);
+    if (doLong) {
+      L.push(`        dataframe.loc[`);
+      L.push(`            (${exitLogic.long}),`);
+      L.push(`            'exit_long'] = 1`);
+    }
+    if (doShort) {
+      L.push(`        dataframe.loc[`);
+      L.push(`            (${exitLogic.short || exitLogic.long}),`);
+      L.push(`            'exit_short'] = 1`);
+    }
   } else {
     if (hasInd('rsi')) {
-      L.push(`        dataframe.loc[`);
-      L.push(`            (dataframe['rsi'] > 70),`);
-      L.push(`            'exit_long'] = 1`);
-      L.push(`        dataframe.loc[`);
-      L.push(`            (dataframe['rsi'] < 30),`);
-      L.push(`            'exit_short'] = 1`);
+      if (doLong) {
+        L.push(`        dataframe.loc[`);
+        L.push(`            (dataframe['rsi'] > 70),`);
+        L.push(`            'exit_long'] = 1`);
+      }
+      if (doShort) {
+        L.push(`        dataframe.loc[`);
+        L.push(`            (dataframe['rsi'] < 30),`);
+        L.push(`            'exit_short'] = 1`);
+      }
     } else if (hasInd('stochastic') || hasInd('kdj')) {
-      L.push(`        dataframe.loc[`);
-      L.push(`            (dataframe['stoch_k'] > 80),`);
-      L.push(`            'exit_long'] = 1`);
-      L.push(`        dataframe.loc[`);
-      L.push(`            (dataframe['stoch_k'] < 20),`);
-      L.push(`            'exit_short'] = 1`);
+      if (doLong) {
+        L.push(`        dataframe.loc[`);
+        L.push(`            (dataframe['stoch_k'] > 80),`);
+        L.push(`            'exit_long'] = 1`);
+      }
+      if (doShort) {
+        L.push(`        dataframe.loc[`);
+        L.push(`            (dataframe['stoch_k'] < 20),`);
+        L.push(`            'exit_short'] = 1`);
+      }
     } else if (hasInd('cci')) {
-      L.push(`        dataframe.loc[`);
-      L.push(`            (dataframe['cci'] > 150),`);
-      L.push(`            'exit_long'] = 1`);
-      L.push(`        dataframe.loc[`);
-      L.push(`            (dataframe['cci'] < -150),`);
-      L.push(`            'exit_short'] = 1`);
+      if (doLong) {
+        L.push(`        dataframe.loc[`);
+        L.push(`            (dataframe['cci'] > 150),`);
+        L.push(`            'exit_long'] = 1`);
+      }
+      if (doShort) {
+        L.push(`        dataframe.loc[`);
+        L.push(`            (dataframe['cci'] < -150),`);
+        L.push(`            'exit_short'] = 1`);
+      }
     } else if (hasInd('macd')) {
-      L.push(`        dataframe.loc[`);
-      L.push(`            (dataframe['macd'] < dataframe['macd_signal']),`);
-      L.push(`            'exit_long'] = 1`);
-      L.push(`        dataframe.loc[`);
-      L.push(`            (dataframe['macd'] > dataframe['macd_signal']),`);
-      L.push(`            'exit_short'] = 1`);
+      if (doLong) {
+        L.push(`        dataframe.loc[`);
+        L.push(`            (dataframe['macd'] < dataframe['macd_signal']),`);
+        L.push(`            'exit_long'] = 1`);
+      }
+      if (doShort) {
+        L.push(`        dataframe.loc[`);
+        L.push(`            (dataframe['macd'] > dataframe['macd_signal']),`);
+        L.push(`            'exit_short'] = 1`);
+      }
     } else {
       L.push(`        dataframe.loc[`);
       L.push(`            (dataframe['volume'] > 0),  # exits handled by ROI/stoploss`);
       L.push(`            'exit_long'] = 0  # placeholder`);
-      L.push(`        dataframe.loc[`);
-      L.push(`            (dataframe['volume'] > 0),`);
-      L.push(`            'exit_short'] = 0`);
+      if (doShort) {
+        L.push(`        dataframe.loc[`);
+        L.push(`            (dataframe['volume'] > 0),`);
+        L.push(`            'exit_short'] = 0`);
+      }
     }
   }
   L.push(`        return dataframe`);
