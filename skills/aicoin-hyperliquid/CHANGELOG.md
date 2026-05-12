@@ -38,6 +38,30 @@
 
 HL 上 686 个市场里有 ~150 个是第三方 deployer prefix 资产 (美股 / 商品 / 指数 / 主题), 调按 `coin` 过滤的接口必须用正确 prefix。具体分类见 SKILL.md。
 
+## 2026-05 收尾 — 9 并行 agent 测试 (G6-G9) 发现的坑
+
+### 脚本层 silent wrong 修复 (commit 9a4762c)
+
+- `whale_events` 上游 coin 过滤不严, 本地剔除非请求币种 + _note 提示
+- `completed_trades_by_time` Coin 大写字段, 小写 coin 兼容自动转
+- `current_pos_history` 缺 coin 拼 /undefined → 本地校验
+- `fills / completed_trades / orders_latest / filled_orders / twap_states` 缺 address → 统一加 requireAddress
+
+### SKILL.md 字段陷阱补全
+
+- HIP-3 表加 67 个 `#N` (HL dexs 子市场, 之前未分类)
+- `whale_events`: 本地过滤行为说明
+- `whale_history_ratio`: 全市场聚合, 不接 coin 参数
+- `liq_history`: longFilled (taker 成交) vs longLiquidations (真强平) 区分
+- `liq_stats_by_coin`: 只返有强平的币 (不是 bug)
+- `oi_history`: 后端默认只 4 条
+- `fills.oid` 会重复, 去重用 `tid`
+- `orders_latest / filled_orders` 返嵌套 `{order:{oid,..},status,..}` 不是扁平
+- `pnls / batch_pnls` 累计序列起点 v=0, 不是日增量
+- `batch_max_drawdown` 同时返 Pascal + camelCase 两套字段, 用 camelCase 跟单地址版对齐
+- `discover` vs `smart_find` 字段命名不统一 (snapPerpValue vs perpValue 等)
+- `accounts.currentPosition` ≠ `smart_find.positions` ≠ `trader_stats.closePosCount`, 字段语义差异警告
+
 ## 提交时间线
 
 - `5caa59b` (2026-05): 第 1 轮 — 默认参数兜底 + requireAddress + completed_* try/catch

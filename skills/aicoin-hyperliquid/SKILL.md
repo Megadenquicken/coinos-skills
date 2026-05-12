@@ -44,6 +44,7 @@ Hyperliquid whale tracking and analytics powered by [AiCoin Open API](https://ww
 | HIP-3 第三方加密 | 22 | `hyna:` | `hyna:BNB` / `hyna:DOGE` |
 | HIP-3 市场宽度 | 3 | `para:` | `para:BTCD` / `para:TOTAL2` |
 | 1000x 系列 | 6 | `k*` | `kPEPE` / `kSHIB` |
+| HL dexs 子市场 | 67 | `#N` (纯数字) | `#71` / `#110` / `#321` (其它 deployer 子市场 ID) |
 
 **调用规则**:
 - 主流 crypto 直接传裸名 (`BTC` / `ETH` / `SOL` / `XRP` / `DOGE` / `BNB`)
@@ -96,16 +97,16 @@ Get at https://www.aicoin.com/opendata. See [Paid Feature Guide](#paid-feature-g
 | Action | Description | Min Tier | Params |
 |--------|-------------|----------|--------|
 | `whale_positions` | Whale positions | 标准版 | `{"coin":"BTC","dir":"long","topBy":"position-value","take":"10"}` dir: long/short; topBy: position-value/margin-balance/create-time/profit/loss; take: max 200. Optional: `npnlSide` (profit/loss), `frSide` (profit/loss) |
-| `whale_events` | Whale events | 标准版 | `{"coin":"BTC","limit":"10"}` limit: max 100 |
+| `whale_events` | Whale events. **上游 coin 过滤不严**, 脚本本地按 coin 严格剔除非请求币种 (返回会带 `_note` 说明剔除几条)。 | 标准版 | `{"coin":"BTC","limit":"10"}` limit: max 100 |
 | `whale_directions` | Long/short direction | 标准版 | `{"coin":"BTC"}` |
-| `whale_history_ratio` | Historical long ratio | 标准版 | `{"interval":"1h","limit":"50"}` interval: 10m/1h/4h/1d; limit: max 200 |
+| `whale_history_ratio` | Historical long ratio. **全市场聚合**, 不接 coin 参数 (脚本签名也没暴露)。要看单币历史多空比目前 Open API 没暴露。 | 标准版 | `{"interval":"1h","limit":"50"}` interval: 10m/1h/4h/1d; limit: max 200 |
 
 #### Liquidations
 | Action | Description | Min Tier | Params |
 |--------|-------------|----------|--------|
-| `liq_history` | Liquidation history | 标准版 | `{"coin":"BTC","interval":"15m","limit":"20"}` interval: 1m~60d; limit: max 100 |
+| `liq_history` | Liquidation history. **字段命名陷阱**: `longFilled` / `shortFilled` 是**总成交量** (taker), `longLiquidations` / `shortLiquidations` 才是**真强平**。最近窗口没强平时后两个全 0 但 Filled 仍大数 — 不要混淆。 | 标准版 | `{"coin":"BTC","interval":"15m","limit":"20"}` interval: 1m~60d; limit: max 100 |
 | `liq_stats` | Liquidation stats | 标准版 | `{"coin":"BTC","interval":"15m"}` interval: 1s~60d |
-| `liq_stats_by_coin` | Stats by coin | 标准版 | `{"interval":"15m"}` interval: 1s~60d |
+| `liq_stats_by_coin` | Stats by coin. **只返回最近窗口实际发生过强平的币**, 没强平的币不出现。15m 窗口可能只 1-3 个币, 1d 窗口才覆盖更多。返回少不是 bug。 | 标准版 | `{"interval":"15m"}` interval: 1s~60d |
 | `liq_top_positions` | Large liquidations | 标准版 | `{"coin":"BTC","interval":"1d"}` |
 
 #### Open Interest & Orderbook
@@ -113,7 +114,7 @@ Get at https://www.aicoin.com/opendata. See [Paid Feature Guide](#paid-feature-g
 |--------|-------------|----------|--------|
 | `oi_summary` | OI overview | 高级版 | None |
 | `oi_top_coins` | OI ranking | 高级版 | `{"limit":"10","interval":"3d"}` interval: 15m~180d |
-| `oi_history` | OI history | 专业版 | `{"coin":"BTC","interval":"4h"}` |
+| `oi_history` | OI history. **后端默认只返 ~4 条**, 没传 limit 会非常少。脚本暂未暴露 limit, 想要更多历史点目前查不到 (后端 spec 未公开)。 | 专业版 | `{"coin":"BTC","interval":"4h"}` |
 | `orderbook_history` | Orderbook history summaries | 高级版 | `{"coin":"BTC","interval":"1d"}` interval: 1h~180d |
 
 #### Taker
@@ -131,13 +132,13 @@ Get at https://www.aicoin.com/opendata. See [Paid Feature Guide](#paid-feature-g
 | `best_trades` | Best trades | 标准版 | `{"address":"0x...","period":"30"}` |
 | `performance` | Performance by coin | 标准版 | `{"address":"0x...","period":"30"}` |
 | `completed_trades` | Completed trades | 标准版 | `{"address":"0x...","coin":"BTC"}` |
-| `accounts` | Batch accounts — 见 [Known Issues](#known-issues-broken--临时不稳--设计限制) 偶发 500, 用 `statistics`+`batch_clearinghouse_state` 替代 | 标准版 | `{"addresses":"[\"0x...\"]"}` |
+| `accounts` | Batch accounts — 见 [Known Issues](#known-issues-broken--临时不稳--设计限制) 偶发 500, 用 `statistics`+`batch_clearinghouse_state` 替代。**字段陷阱**: `currentPosition` (该接口) ≠ `smart_find.positions` (那是累计交易笔数) ≠ `trader_stats.closePosCount` (30天已平仓数), 三个数字差几个数量级, 别串字段。 | 标准版 | `{"addresses":"[\"0x...\"]"}` |
 | `statistics` | Batch statistics | 标准版 | `{"addresses":"[\"0x...\"]"}` |
 
 #### Fills
 | Action | Description | Min Tier | Params |
 |--------|-------------|----------|--------|
-| `fills` | Address fills | 标准版 | `{"address":"0x..."}` |
+| `fills` | Address fills. **`oid` 字段会重复** (一个 order 可能产生多个 fill), 想做去重要用 `tid` (trade id, 唯一)。 | 标准版 | `{"address":"0x..."}` |
 | `fills_by_oid` | By order ID | 标准版 | `{"oid":"xxx"}` |
 | `fills_by_twapid` | By TWAP ID | 标准版 | `{"twapid":"xxx"}` |
 | `fills_by_builder` | Builder fills | 标准版 | `{"builder":"0x..."}` Optional: `coin`, `limit` (max 2000), `minVal` |
@@ -146,9 +147,9 @@ Get at https://www.aicoin.com/opendata. See [Paid Feature Guide](#paid-feature-g
 #### Orders
 | Action | Description | Min Tier | Params |
 |--------|-------------|----------|--------|
-| `orders_latest` | Latest orders | 标准版 | `{"address":"0x..."}` |
+| `orders_latest` | Latest orders. **返**嵌套结构 `[{order: {oid, side, ...}, status, statusTimestamp}]`, 不是扁平。要 `oid` 走 `row.order.oid` 不是 `row.oid`。 | 标准版 | `{"address":"0x..."}` |
 | `order_by_oid` | By order ID | 标准版 | `{"oid":"xxx"}` |
-| `filled_orders` | Filled orders | 标准版 | `{"address":"0x..."}` |
+| `filled_orders` | Filled orders. 同 `orders_latest` 嵌套结构。**注意**: 高频地址的 `filled_orders` vs `orders_latest` 可能完全不重叠 (filled 是已成, orders_latest 含 open + cancelled)。 | 标准版 | `{"address":"0x..."}` |
 | `filled_by_oid` | Filled by ID | 标准版 | `{"oid":"xxx"}` |
 | `top_open` | Large open orders | 基础版 | `{"coin":"BTC","minVal":"100000"}` |
 | `active_stats` | Active stats | 基础版 | `{"coin":"BTC","whaleThreshold":"500000"}` |
@@ -169,18 +170,18 @@ Get at https://www.aicoin.com/opendata. See [Paid Feature Guide](#paid-feature-g
 | Action | Description | Min Tier | Params |
 |--------|-------------|----------|--------|
 | `portfolio` | Account curve. `window` **仅接受** `day` / `week` / `month` / `allTime` (其他值脚本本地拦截)。 | 标准版 | `{"address":"0x...","window":"week"}` |
-| `pnls` | PnL curve | 标准版 | `{"address":"0x...","period":"30"}` |
+| `pnls` | PnL curve. **返**累计序列 (`{ts, v}` 数组, 起点 v=0), 不是日增量。要日增量自己算相邻 `v` 差值。 | 标准版 | `{"address":"0x...","period":"30"}` |
 | `max_drawdown` | Max drawdown | 标准版 | `{"address":"0x...","days":"30"}` |
 | `net_flow` | Net flow | 标准版 | `{"address":"0x...","days":"30"}` |
 
 #### Batch Endpoints
 | Action | Description | Min Tier | Params |
 |--------|-------------|----------|--------|
-| `batch_pnls` | Batch PNL curves | 标准版 | `{"addresses":"[\"0x...\"]","period":7}` Optional: `scope` (all/perp) |
+| `batch_pnls` | Batch PNL curves. 同 `pnls` 累计序列起点 v=0, 多个地址版。 | 标准版 | `{"addresses":"[\"0x...\"]","period":7}` Optional: `scope` (all/perp) |
 | `batch_addr_stat` | Batch address stats | 标准版 | `{"addresses":"[\"0x...\"]","period":7}` |
 | `batch_clearinghouse_state` | Batch clearinghouse state | 标准版 | `{"addresses":"[\"0x...\"]"}` Optional: `dex` |
 | `batch_spot_clearinghouse_state` | Batch spot state | 标准版 | `{"addresses":"[\"0x...\"]"}` |
-| `batch_max_drawdown` | Batch max drawdown | 标准版 | `{"addresses":"[\"0x...\"]","days":7}` Optional: `scope` |
+| `batch_max_drawdown` | Batch max drawdown. **返**同时含 Pascal (`Address/MaxDrawdown/High/NetIn`) 和 camelCase (`address/maxDrawdown/high/netIn`) 两套字段, 数据相同。用 **camelCase** 跟单地址版 `max_drawdown` 字段对齐永远安全。 | 标准版 | `{"addresses":"[\"0x...\"]","days":7}` Optional: `scope` |
 | `batch_net_flow` | Batch net flow | 标准版 | `{"addresses":"[\"0x...\"]","days":7}` |
 
 #### Advanced
@@ -188,7 +189,7 @@ Get at https://www.aicoin.com/opendata. See [Paid Feature Guide](#paid-feature-g
 |--------|-------------|----------|--------|
 | `info` | HL Info API 统一端点 (POST /api/upgrade/v2/hl/info) — 用 type 切不同子接口,见下方完整 types 表 | 免费版 | `{"type":"<type>","user":"<addr 可选>","extra_params":{<其它参数>}}` |
 | `smart_find` | Smart money discovery. **`positions` / `profitPositions` 是累计交易笔数, 不是当前持仓数** (Top1 `positions=602107` 意思是历史交易 60 万笔)。`winRate = profitPositions / positions` 累计胜率。`avgHoldingSec` 平均持仓秒数, 小值=高频量化, 跟单意义不大, 当**市场情绪信号**用。想看地址当前真实持仓用 `whale_positions` 按 user 过滤或 `performance`。 | 标准版 | `{}` |
-| `discover` | Trader discovery | 高级版 | `{}` |
+| `discover` | Trader discovery. **字段命名不一致警告**: 跟 `smart_find` 不同 — discover 用 `snapPerpValue` / `snapTotalValue` / `positionCount`, smart_find 用 `perpValue` / `totalValue` / `positions`。跨这两个接口套字段会拿不到, 用前先看 raw 字段名。 | 高级版 | `{}` |
 | `discover_history` | Historical discovery | 高级版 | `{"pageNum":1,"pageSize":20,"period":7}` Optional: `startTime`, `time`, `sort`, `coins`, `selects`, `filters` |
 
 #### `info` action 全部支持的 type (按 AiCoin 文档对齐, https://docs.aicoin.com/apis/hyperliquid#post-hl-info)
