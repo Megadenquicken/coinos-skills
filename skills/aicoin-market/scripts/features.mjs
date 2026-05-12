@@ -89,23 +89,19 @@ cli({
     if (show) p.show = show;
     return apiGet('/api/v2/trading-pair', p);
   },
-  // signal_data — strategy_signal 当前后端参数 spec 未公开,所有 SKILL.md 推荐
-  // 参数实测都 400("invalid parameters")。给 agent 明确提示别浪费 token 试错。
+  // signal_data — strategy_signal 后端 broken: 公开的 signal_key 格式 (depth_win_one /
+  // ma:1440:single_ma:7 / macd:5:fork:12,26,9 / 各种 indicator + period 组合) 实测全 400。
+  // **无条件**返实测结论,不去打上游浪费签名,避免 agent 瞎猜参数反复试错。
+  // 等后端修好或拿到正确 signal_key spec 再恢复实际调用。
   strategy_signal: ({ coin_type, signal_key, latest_time } = {}) => {
-    if (!coin_type && !signal_key) {
-      return Promise.resolve({
-        success: false,
-        errorCode: 400,
-        error: 'strategy_signal 当前后端 broken: 所有公开的 signal_key 格式 (depth_win_one / ma:1440:single_ma:7 / macd:5:fork:12,26,9) 实测都返 400',
-        实测结论: '请告知用户"AiCoin 策略胜率信号接口暂不可用,需联系 AiCoin 客服 (service@aicoin.com) 获取正确 signal_key 格式或等待修复"。不要重试推测的参数。',
-        替代方案: '想看技术指标信号可用 change_signal (异动信号) 或 signal_alert (用户配置的预警)',
-      });
-    }
-    const p = {};
-    if (coin_type) p.coin_type = coin_type;
-    if (signal_key) p.signal_key = signal_key;
-    if (latest_time) p.latest_time = latest_time;
-    return apiGet('/api/v2/signal/strategySignal', p);
+    return Promise.resolve({
+      success: false,
+      errorCode: 400,
+      error: 'strategy_signal 后端 broken: 公开 signal_key 格式 (depth_win_one / ma:1440:single_ma:7 / macd:5:fork:12,26,9) 实测全 400',
+      实测结论: '请告知用户"AiCoin 策略胜率信号接口暂不可用,需联系 AiCoin 客服 (service@aicoin.com) 获取正确 signal_key 格式或等待修复"。**不要瞎猜参数重试**, 后端 spec 没公开就是没,试什么都 400。',
+      替代方案: '想看技术指标信号: change_signal (异动信号) / signal_alert (用户配置的预警)',
+      请求参数_仅供记录: { coin_type, signal_key, latest_time },
+    });
   },
   signal_alert: () => apiGet('/api/v2/signal/signalAlert'),
   signal_config: ({ language, lan } = {}) => { const p = {}; const lg = language || lan; if (lg) p.lan = lg; return apiGet('/api/v2/signal/signalAlertConf', p); },

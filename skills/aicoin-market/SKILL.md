@@ -30,8 +30,12 @@ Crypto market data toolkit powered by [AiCoin Open API](https://www.aicoin.com/o
 - `strategy_signal` 后端 broken: 公开的 signal_key 格式 (`depth_win_one` 等) 实测都返 400。脚本会直接返 `实测结论: AiCoin 接口故障` 提示, **不要重试**
 - `stock_company` / `airdrop detail` / `hl/traders/accounts` 后端偶发 500: 脚本会捕获并返清晰提示告诉用户联系客服, **不要让用户改参数**
 - `ai_analysis` 返空 list 是后端内容池空, 不是接口故障. 脚本会加 `_note` 提示
+- `funding_rate weighted=true` / `super_depth` 返空 list 通常是窗口/数据问题, 脚本加 `_note` 区分
 - `liq` 是 `liquidation` 的 alias; `ai_coins` 是 `ai_analysis` 的 alias; `exchange_listing_flash` 是 `exchange_listing` 的 alias — 都可用
 - 多个端点的硬上限 100 条 (coin_list / funding_rate / open_interest / historical_depth / trade_data), 没有 pagination, 别问"为啥只有 100 条"
+- `search` 支持翻页参数: `{"search":"BTC","page":"2","page_size":"50"}` (默认 page=1 / page_size=20, 全库 ~350 个币要翻几页才全)
+- `hot_coins` 的 `key` 实测只 `defi` 通; `meme` / `new` 都返空,可能需要后端更新字典。 用户问 meme 热点币改用 `coin.mjs search '{"search":"meme","trade_type":"spot"}'`
+- `market.mjs ticker '{"market_list":"binance"}'` 返的是**平台整体 24h 资金净流入**, 不是单币 OHLC。 单币行情用 `coin.mjs coin_ticker` 或 `features.mjs pair_ticker`
 
 ## Quick Reference
 

@@ -92,22 +92,28 @@ cli({
   // alias: SKILL.md 早期用 ai_coins, 实际 action 名是 ai_analysis。保留兼容。
   ai_coins: aiAnalysisImpl,
   // coin_funding_rate (AiCoin API only supports BTC)
-  funding_rate: ({ symbol, interval = '8h', weighted, limit = '100', start_time, end_time }) => {
+  funding_rate: async ({ symbol, interval = '8h', weighted, limit = '100', start_time, end_time }) => {
     const resolved = resolveSymbol(symbol);
     // Check if resolved symbol is BTC-related
     if (resolved && !resolved.toLowerCase().startsWith('btc')) {
-      return Promise.resolve({
+      return {
         code: '0', msg: 'success', data: [],
         _note: `AiCoin funding_rate API only supports BTC. For ${symbol} funding rate, use: node scripts/exchange.mjs funding_rate '{"exchange":"binance","symbol":"${symbol}/USDT:USDT"}'`
-      });
+      };
     }
     const p = { symbol: resolved, interval, limit };
     if (start_time) p.start_time = start_time;
     if (end_time) p.end_time = end_time;
-    const path = weighted === 'true'
+    const isWeighted = weighted === 'true' || weighted === true;
+    const path = isWeighted
       ? '/api/upgrade/v2/futures/funding-rate/vol-weight-history'
       : '/api/upgrade/v2/futures/funding-rate/history';
-    return apiGet(path, p);
+    const json = await apiGet(path, p);
+    // 实测: weighted=true 经常返空 list。给 agent 明确提示这是数据问题不是接口故障。
+    if (isWeighted && json && Array.isArray(json.data) && json.data.length === 0) {
+      json._note = '加权资金费率 (vol-weight-history) 返回为空。这通常是上游窗口数据没填或当前 Pro 档没覆盖该 endpoint, 不是接口故障也不是参数错。可改用 weighted=false 拿普通资金费率历史, 或告知用户后再决定是否继续。';
+    }
+    return json;
   },
   // coin_liquidation
   liquidation_map: ({ symbol, dbkey, cycle, leverage }) => {
@@ -142,10 +148,16 @@ cli({
     if (start_time) p.start_time = start_time; if (end_time) p.end_time = end_time;
     return apiGet('/api/upgrade/v2/futures/historical-depth', p);
   },
-  super_depth: ({ symbol, key, amount = '10000', limit = '100', start_time, end_time }) => {
+  super_depth: async ({ symbol, key, amount = '10000', limit = '100', start_time, end_time }) => {
     const p = { key: resolveSymbol(symbol || key), amount, limit };
     if (start_time) p.start_time = start_time; if (end_time) p.end_time = end_time;
-    return apiGet('/api/upgrade/v2/futures/super-depth/history', p);
+    const json = await apiGet('/api/upgrade/v2/futures/super-depth/history', p);
+    // 实测: 默认 amount=10000 经常返空 list, 即使调到 100000 也空。
+    // 提示 agent 这通常是当前窗口没大单或权限差异, 别误判为接口故障。
+    if (json && Array.isArray(json.data) && json.data.length === 0) {
+      json._note = `super_depth (大单挂单历史) 返空。该端点观察窗口很短 (~100 秒级), 当前窗口没 ≥${amount} 的大单挂单是常态, 不是接口故障。可调小 amount 或换交易对再试。`;
+    }
+    return json;
   },
   trade_data: ({ symbol, dbkey, limit = '100', start_time, end_time }) => {
     const p = { dbkey: resolveDbkey(symbol || dbkey), limit };

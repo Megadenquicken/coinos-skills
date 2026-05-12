@@ -17,6 +17,27 @@ function requireAddress(address) {
   return null;
 }
 
+// HL 后端的 completed_* 端点对 "未知 positionId" 是塞到 HTTP 200 的 body
+// {code:"400", msg:"position not found"} 里返,不走 throw 分支。统一把这种
+// 业务错误包成 实测结论 提示, 引导 agent 改用替代端点。
+// fallback 是替代调用建议文字。
+function wrapPositionNotFound(json, fallback) {
+  if (!json || typeof json !== 'object') return json;
+  const code = String(json.code || '');
+  const msg = String(json.msg || '');
+  // code 非 "0" 或非 0 都视为业务错; 同时 msg 含 position not found 才走包装路径
+  if (code !== '0' && code !== '' && /position not found/i.test(msg)) {
+    return {
+      success: false,
+      errorCode: 400,
+      error: msg,
+      实测结论: `该端点按 positionId 取数, 不接受 address+coin 组合。agent 拿不到 positionId 用不了。${fallback}`,
+      _raw: json,
+    };
+  }
+  return json;
+}
+
 cli({
   // hl_trader — period 实测必填且没默认, 不传 400。这里给 "30" (30 天) 兜底。
   trader_stats: ({ address, period }) => {
@@ -108,20 +129,8 @@ cli({
       };
     }
     const p = {}; if (startTime) p.startTime = startTime; if (endTime) p.endTime = endTime;
-    try {
-      return await apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-history/${coin}`, p);
-    } catch (e) {
-      // 实测 4 个真实地址全 400 'position not found'。后端按 positionId 不按 address+coin。
-      if (/position not found/i.test(e.message)) {
-        return {
-          success: false,
-          errorCode: 400,
-          error: e.message,
-          实测结论: 'completed-position-history 实测按 positionId 取数, 不接受 address+coin 组合。agent 拿不到 positionId 用不了这个接口。改用 completed_trades (按地址列已平仓交易) 或 fills (按地址列所有成交) 拿历史。',
-        };
-      }
-      throw e;
-    }
+    const json = await apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-history/${coin}`, p);
+    return wrapPositionNotFound(json, '改用 completed_trades (按地址列已平仓交易) 或 fills (按地址列所有成交) 拿历史。');
   },
   current_pnl: ({ address, coin, interval, limit } = {}) => {
     const err = requireAddress(address); if (err) return Promise.resolve(err);
@@ -141,17 +150,8 @@ cli({
       };
     }
     const p = { interval: interval || '1h' }; if (startTime) p.startTime = startTime; if (endTime) p.endTime = endTime; if (limit) p.limit = limit;
-    try {
-      return await apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-pnl/${coin}`, p);
-    } catch (e) {
-      if (/position not found/i.test(e.message)) {
-        return {
-          success: false, errorCode: 400, error: e.message,
-          实测结论: 'completed-position-pnl 实测按 positionId 取数, address+coin 组合 400。agent 拿不到 positionId。改用 pnls (整地址 PnL 曲线) 或 best_trades (按地址盈利交易)。',
-        };
-      }
-      throw e;
-    }
+    const json = await apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-pnl/${coin}`, p);
+    return wrapPositionNotFound(json, '改用 pnls (整地址 PnL 曲线) 或 best_trades (按地址盈利交易)。');
   },
   current_executions: ({ address, coin, interval, limit } = {}) => {
     const err = requireAddress(address); if (err) return Promise.resolve(err);
@@ -168,17 +168,8 @@ cli({
       };
     }
     const p = { interval: interval || '1h' }; if (startTime) p.startTime = startTime; if (endTime) p.endTime = endTime; if (limit) p.limit = limit;
-    try {
-      return await apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-executions/${coin}`, p);
-    } catch (e) {
-      if (/position not found/i.test(e.message)) {
-        return {
-          success: false, errorCode: 400, error: e.message,
-          实测结论: 'completed-position-executions 实测按 positionId 取数, address+coin 组合 400。agent 拿不到 positionId。改用 fills (按地址列所有成交)。',
-        };
-      }
-      throw e;
-    }
+    const json = await apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-executions/${coin}`, p);
+    return wrapPositionNotFound(json, '改用 fills (按地址列所有成交)。');
   },
   // hl_portfolio — window 仅 day/week/month/allTime, 其他值上游 400。校验后再调。
   portfolio: ({ address, window }) => {

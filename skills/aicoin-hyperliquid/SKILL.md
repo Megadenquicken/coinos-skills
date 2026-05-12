@@ -31,6 +31,8 @@ Hyperliquid whale tracking and analytics powered by [AiCoin Open API](https://ww
 - 这三个 completed 端点还必填 `startTime` 或 `endTime` 之一 (ms epoch), 脚本会给清晰提示
 - `hl/traders/accounts` 后端偶发 500, 脚本会捕获并提示改用 `statistics + batch_clearinghouse_state`
 - 单地址端点缺 address 时脚本本地拦截, 不再产生 `traders/undefined/...` 这种错误 URL
+- `smart_find` 只返地址 + 通用业绩字段(realizedPnl/胜率/leverage 等), **没有"该地址做什么币"的字段**。想知道地址主攻哪些币, 拿 address 后再调 `performance '{"address":"0x..."}'` 看 per-coin 拆解
+- HL 后端把 "position not found" 这类**业务错误**塞到 HTTP 200 body `{code:"400", msg:"position not found"}` 里(不是 HTTP 4xx), `completed_*` 三个端点已在脚本里 wrap 这种 body 给清晰提示, agent 不要自己解析 raw `code` 字段
 
 ## Setup
 
