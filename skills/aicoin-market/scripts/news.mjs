@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // AiCoin News & Flash CLI
-import { apiGet, cli } from '../lib/aicoin-api.mjs';
+import { apiGet, apiGetText, cli } from '../lib/aicoin-api.mjs';
 
 function exchangeListingImpl({ language, memberIds, page_size, pageSize } = {}) {
   const p = {};
@@ -18,10 +18,13 @@ cli({
     return apiGet('/api/v2/content/news-list', p);
   },
   news_detail: ({ id }) => apiGet('/api/v2/content/news-detail', { id }),
+  // 该端点返 RSS XML 不是 JSON, 必须用 apiGetText 拿原文。
+  // 返回 { contentType: "application/xml...", body: "<?xml..." }。
+  // agent 拿到后自己解析 XML 或转告用户原文 (不要试图 JSON.parse)。
   news_rss: ({ page, page_size, pageSize = '20' } = {}) => {
     const p = { pageSize: page_size || pageSize };
     if (page) p.page = page;
-    return apiGet('/api/v2/content/square/market/news-list', p);
+    return apiGetText('/api/v2/content/square/market/news-list', p);
   },
   newsflash: ({ language } = {}) => {
     const p = {};

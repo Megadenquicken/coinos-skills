@@ -16,7 +16,7 @@ function fixPlatformAlias(s) {
 // deribit/mexc/kucoin/bithumb/bitfinex/binancespot 等。遇到这些 platform 直接
 // 返回一个清晰的错误说明,不去调上游浪费一次签名。
 const BIG_ORDERS_UNSUPPORTED = new Set([
-  'huobi', 'huobifutures', 'huobiproswap', 'kraken', 'deribit', 'mexc',
+  'huobi', 'huobipro', 'huobifutures', 'huobiproswap', 'kraken', 'deribit', 'mexc',
   'kucoin', 'bithumb', 'bitfinex', 'binancespot', 'bybitswap', 'gateswap',
 ]);
 function checkBigOrdersSupport(symbol) {

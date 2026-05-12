@@ -117,6 +117,20 @@ export async function apiGet(path, params = {}) {
   return json;
 }
 
+// Text-returning version of apiGet. Use for endpoints that return XML / RSS
+// (e.g. /api/v2/content/square/market/news-list returns RSS XML, not JSON).
+// 返回 { contentType, body }, body 是纯文本字符串。
+export async function apiGetText(path, params = {}) {
+  const qs = new URLSearchParams({ ...params, ...sign() });
+  const res = await fetch(`${BASE}${path}?${qs}`, { signal: AbortSignal.timeout(30000) });
+  if (!res.ok) {
+    const text = await res.text();
+    const hint = res.status >= 500 ? upstreamFaultHint(res.status, path) : '';
+    throw new Error(`API ${res.status}: ${text}${hint}`);
+  }
+  return { contentType: res.headers.get('content-type') || '', body: await res.text() };
+}
+
 // Validate a key pair by making a test API call
 export async function validateKey(keyId, secret) {
   const nonce = randomBytes(4).toString('hex');

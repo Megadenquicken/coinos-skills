@@ -55,7 +55,8 @@ cli({
     const p = { period: period || '30' }; if (limit) p.limit = limit;
     return apiGet(`/api/upgrade/v2/hl/traders/${address}/performance-by-coin`, p);
   },
-  completed_trades: ({ address, coin, limit }) => {
+  completed_trades: ({ address, coin, limit } = {}) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
     const p = {}; if (coin) p.coin = coin; if (limit) p.limit = limit;
     return apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-trades`, p);
   },
@@ -83,7 +84,8 @@ cli({
     return apiPost('/api/upgrade/v2/hl/traders/statistics', { addresses: addrs });
   },
   // hl_fills
-  fills: ({ address, coin, limit }) => {
+  fills: ({ address, coin, limit } = {}) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
     const p = {}; if (coin) p.coin = coin; if (limit) p.limit = limit;
     return apiGet(`/api/upgrade/v2/hl/fills/${address}`, p);
   },
@@ -95,12 +97,14 @@ cli({
     return apiGet('/api/upgrade/v2/hl/fills/top-trades', p);
   },
   // hl_orders
-  orders_latest: ({ address, coin, limit }) => {
+  orders_latest: ({ address, coin, limit } = {}) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
     const p = {}; if (coin) p.coin = coin; if (limit) p.limit = limit;
     return apiGet(`/api/upgrade/v2/hl/orders/${address}/latest`, p);
   },
   order_by_oid: ({ oid }) => apiGet(`/api/upgrade/v2/hl/orders/oid/${oid}`),
-  filled_orders: ({ address, coin, limit }) => {
+  filled_orders: ({ address, coin, limit } = {}) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
     const p = {}; if (coin) p.coin = coin; if (limit) p.limit = limit;
     return apiGet(`/api/upgrade/v2/hl/filled-orders/${address}/latest`, p);
   },
@@ -113,12 +117,23 @@ cli({
     const p = {}; if (coin) p.coin = coin; if (whaleThreshold || whale_threshold) p.whaleThreshold = whaleThreshold || whale_threshold;
     return apiGet('/api/upgrade/v2/hl/orders/active-stats', p);
   },
-  twap_states: ({ address, coin, limit }) => {
+  twap_states: ({ address, coin, limit } = {}) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
     const p = {}; if (coin) p.coin = coin; if (limit) p.limit = limit;
     return apiGet(`/api/upgrade/v2/hl/twap-states/${address}/latest`, p);
   },
   // hl_position
-  current_pos_history: ({ address, coin }) => apiGet(`/api/upgrade/v2/hl/traders/${address}/current-position-history/${coin}`),
+  current_pos_history: ({ address, coin } = {}) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
+    if (!coin) {
+      return Promise.resolve({
+        success: false, errorCode: 400,
+        error: 'current_pos_history 必填 coin (例: BTC / ETH / cash:TSLA)',
+        参数提示: '缺 coin 会拼出 /undefined URL 上游返 null 误导, 现已本地拦截。',
+      });
+    }
+    return apiGet(`/api/upgrade/v2/hl/traders/${address}/current-position-history/${coin}`);
+  },
   completed_pos_history: async ({ address, coin, startTime, endTime } = {}) => {
     const err = requireAddress(address); if (err) return err;
     if (!startTime && !endTime) {
@@ -227,10 +242,15 @@ cli({
     const body = { addresses: addrs }; if (period != null) body.period = period;
     return apiPost('/api/upgrade/v2/hl/traders/batch-addr-stat', body);
   },
-  completed_trades_by_time: ({ address, pageNum, pageSize, Coin, endTimeFrom, endTimeTo }) => {
+  // 注意: 上游 body 字段是大写 Coin (不是 coin)。 agent 容易传小写, 静默拿到全币种杂烩。
+  // 这里兼容两种大小写, 不让 silent wrong 发生。
+  completed_trades_by_time: ({ address, pageNum, pageSize, Coin, coin, endTimeFrom, endTimeTo } = {}) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
     const body = {};
     if (pageNum) body.pageNum = pageNum; if (pageSize) body.pageSize = pageSize;
-    if (Coin) body.Coin = Coin; if (endTimeFrom) body.endTimeFrom = endTimeFrom; if (endTimeTo) body.endTimeTo = endTimeTo;
+    const coinValue = Coin || coin;
+    if (coinValue) body.Coin = coinValue;
+    if (endTimeFrom) body.endTimeFrom = endTimeFrom; if (endTimeTo) body.endTimeTo = endTimeTo;
     return apiPost(`/api/upgrade/v2/hl/traders/${address}/completed-trades/by-time`, body);
   },
   batch_clearinghouse_state: ({ addresses, dex }) => {

@@ -85,10 +85,17 @@ cli({
   },
   index_list: () => apiGet('/api/v2/index/getIndex'),
   // crypto_stock
-  stock_quotes: ({ tickers } = {}) => {
+  stock_quotes: async ({ tickers } = {}) => {
     const p = {};
     if (tickers) p.tickers = tickers;
-    return apiGet('/api/upgrade/v2/crypto_stock/quotes', p);
+    const json = await apiGet('/api/upgrade/v2/crypto_stock/quotes', p);
+    // 实测: 该端点是"加密概念股"专用 (MSTR/COIN/TSLA/BULL 等), 通用美股
+    // NVDA/AAPL/MSFT 不在名单, data 会返 null 或单条少于请求数。给 agent 明确提示
+    // 避免误判为接口故障。
+    if (tickers && (json?.data === null || (Array.isArray(json?.data) && json.data.length === 0))) {
+      json._note = `stock_quotes 是"加密概念股"专用 (端点 /crypto_stock/quotes), 只覆盖 MSTR/COIN/TSLA/BULL 等约 2-30 家加密相关公司。tickers="${tickers}" 返空通常是因为这些 symbol 不在加密概念股名单。**不是接口故障**。通用美股 (NVDA/AAPL/MSFT 等) 查 Google Finance / 交易软件。`;
+    }
+    return json;
   },
   stock_top_gainer: ({ us_stock, hk_stock, limit = '30' } = {}) => {
     const p = { limit };

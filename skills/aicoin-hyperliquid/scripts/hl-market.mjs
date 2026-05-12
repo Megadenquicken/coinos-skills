@@ -12,9 +12,19 @@ cli({
     if (topBy) p.topBy = topBy; if (take) p.take = take;
     return apiGet('/api/upgrade/v2/hl/whales/open-positions', p);
   },
-  whale_events: ({ coin, limit } = {}) => {
+  whale_events: async ({ coin, limit } = {}) => {
     const p = {}; if (coin) p.coin = coin; if (limit) p.limit = limit;
-    return apiGet('/api/upgrade/v2/hl/whales/latest-events', p);
+    const json = await apiGet('/api/upgrade/v2/hl/whales/latest-events', p);
+    // 实测: 上游 coin 参数过滤不严, 传 BTC 仍可能混入 SOL/其他币的鲸鱼事件。
+    // 本地按 coin 严格过滤一次, 保证 agent 拿到的就是请求的币种。
+    if (coin && Array.isArray(json?.data)) {
+      const before = json.data.length;
+      json.data = json.data.filter(ev => String(ev?.coin || '').toUpperCase() === String(coin).toUpperCase());
+      if (json.data.length !== before) {
+        json._note = `whale_events 上游 coin 参数过滤不严, 本地已剔除 ${before - json.data.length} 条非 ${coin} 事件 (原返 ${before} 条 → 过滤后 ${json.data.length} 条)。`;
+      }
+    }
+    return json;
   },
   whale_directions: ({ coin } = {}) => {
     const p = {}; if (coin) p.coin = coin;

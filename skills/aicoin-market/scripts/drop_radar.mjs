@@ -30,7 +30,20 @@ cli({
       apiGet('/api/upgrade/v2/content/drop-radar/team', { airdrop_id }).catch(e => ({ error: e.message })),
       apiGet('/api/upgrade/v2/content/drop-radar/x-following', { airdrop_id }).catch(e => ({ error: e.message })),
     ]);
-    if (detail.error) return { error: `Project not found or invalid airdrop_id "${airdrop_id}". Use "list" to browse available projects.`, detail: detail.error };
+    if (detail.error) {
+      // 实测: 当前 key 档位不够时上游会返 HTTP 403 (而不是 304 业务错误)。
+      // 不要把这类失败统一归因为 "airdrop_id 无效", 否则 agent 会让用户改参数。
+      const isPaywall = /API 403|forbidden|paid|付费/i.test(detail.error);
+      if (isPaywall) {
+        return {
+          success: false,
+          errorCode: 403,
+          error: detail.error,
+          实测结论: 'drop_radar.detail 端点需要更高档 AiCoin 套餐。当前 key 拿不到该数据。请告知用户"项目详情需要 AiCoin 标准版以上, 当前账号档位不够; 可改用 list (项目列表已含基础信息)"。**不要让用户改 airdrop_id**, 这不是参数问题。',
+        };
+      }
+      return { error: `Project not found or invalid airdrop_id "${airdrop_id}". Use "list" to browse available projects.`, detail: detail.error };
+    }
     return { ...detail, team: team.data || team, x_following: xFollowing.data || xFollowing };
   },
   widgets: ({ lan } = {}) => {
