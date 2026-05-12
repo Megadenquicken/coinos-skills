@@ -35,6 +35,19 @@ Crypto market data toolkit powered by [AiCoin Open API](https://www.aicoin.com/o
 - **`hl-trader.accounts`** (aicoin-hyperliquid) — 后端偶发 500。**替代**: `statistics + batch_clearinghouse_state`
 - **上游 5xx 通用响应** — 任何端点拿到 HTTP 502/503/504 是 AiCoin 网关临时故障(可重试 1-2 分钟), 拿到 500/501/505+ 是后端异常(直接引导用户联系 service@aicoin.com), 不要让用户改参数
 
+## 跨接口字段约定 (agent 必读, 单接口看不出的坑)
+
+整个 skill 跨多个 action 时容易踩的字段 / 类型 / 单位陷阱:
+
+- **两套响应封装**: 同一份 lib 同时接 AiCoin 两种端点格式 — `/api/v2/*` 返 `{success, errorCode, error, data}`, `/api/upgrade/v2/*` 返 `{code, msg, data}`。 agent 判断成功不能只看 `success`, 必须**两套都判** (`success !== false` && `code === '0'`)。
+- **时间戳单位混杂**: `kline` 用**秒**级 unix; `funding_rate` / `open_interest` / `historical_depth` / `trade_data` 用**毫秒**级; `estimated_liquidation.time_points` key 又是秒; `newsflash.list.timestamp` 是秒。**跨接口处理时间戳前必须按 action 核对单位**, 别假设统一。
+- **search.dbKeys 是 string 不是 array**: 同上述 [search 行](#scriptscoinmjs--coin-data) 已说, 用 `.split(',')` 不要 `JSON.parse`。
+- **search.price 是 CNY**, `coin_ticker.price_usd` 才是 USD: 量级差 ~6.8 倍, 别串字段。
+- **多个端点硬上限 100 条无翻页**: `coin_list` / `funding_rate` / `open_interest` / `historical_depth` / `trade_data` 都是。 用户问"全量历史"时老实告知 API 限制。
+- **数据时新性差异**: `kline` / `coin_ticker` 实时; `historical_depth` 实测窗口短 (近 100 秒) 且**可能滞后 30h+** (后端取样窗口设计); `treasury_*` 每日更新; `news_rss` 24h 摘要。 答用户前看数据 `time` 字段确认是不是用户期望的时点。
+- **字段类型 string vs number 不统一**: `coin_ticker` 所有数值字段是 string (要 parseFloat); `ls_ratio` 部分 string 部分 number (`detail.last` 是 number, `last_day` 是 string); `kline.kline_data[]` 数组里数值是 number。 agent **每次新接口都先看 raw 类型**, 别假设统一。
+- **dbkey vs dbKeys vs key 命名混乱**: `search` 返 `dbKeys` (string, 逗号分隔多个); `coin_config` 用 `coin_key` (string, 单个); `coin_ticker` 用 `coin_key`; `liquidation_map` / `historical_depth` 等用 `dbkey` (string, 单个)。 跨接口取 dbKey 前看清字段名。
+
 ## Quick Reference
 
 | Task | Command | Min Tier |
@@ -154,12 +167,12 @@ All scripts: `node scripts/<name>.mjs <action> [json-params]`
 | `stock_quotes` | ⚠️ **"加密概念股"专用**, 不是通用美股接口 — 端点路径 `/crypto_stock/quotes`, 只覆盖 AiCoin 整理的加密相关公司 (MSTR/COIN/TSLA/BULL 等约 2-30 家)。**NVDA/AAPL/MSFT 等通用股票返空**, 不是接口故障。用户问通用美股价格直接说"AiCoin 这套接口只覆盖加密概念股, 通用美股查 Google Finance / 交易软件"。 | 专业版 | `{"tickers":"i:mstr:nasdaq"}` 不传 tickers 返默认 2 条 |
 | `stock_top_gainer` | 同 `stock_quotes` — 加密概念股范围内的涨幅榜, 不是全美股 | 专业版 | `{"us_stock":"true"}` |
 | `stock_company` | Company details — 见 [Known Issues](#known-issues-broken--临时不稳的端点) 后端偶发 500。同范围仅加密概念股 | 专业版 | `{"symbol":"i:mstr:nasdaq"}` |
-| `treasury_entities` | Holding entities | 专业版 | `{"coin":"BTC"}` |
-| `treasury_history` | Transaction history | 专业版 | `{"coin":"BTC"}` |
-| `treasury_accumulated` | Accumulated holdings | 专业版 | `{"coin":"BTC"}` |
-| `treasury_latest_entities` | Latest entities | 专业版 | `{"coin":"BTC"}` |
-| `treasury_latest_history` | Latest history | 专业版 | `{"coin":"BTC"}` |
-| `treasury_summary` | Holdings overview | 专业版 | `{"coin":"BTC"}` |
+| `treasury_summary` | Holdings overview (单 object: total_entities / total_hold_amount / total_value_usd / last_update_time) | 专业版 | `{"coin":"BTC"}` |
+| `treasury_latest_entities` | 最新国库实体快照 (GET, 返 `data: list[]` 直接数组, 359 实体) | 专业版 | `{"coin":"BTC"}` |
+| `treasury_latest_history` | 最新变动流水 (GET, 返 `data: list[]` 直接数组) | 专业版 | `{"coin":"BTC"}` |
+| `treasury_entities` | **POST**, **分页版** latest_entities (返 `data: {list, total, page, page_size}` 嵌套, total=359). 想要全量翻页用这个不是 latest_entities | 专业版 | `{"coin":"BTC","page":1,"page_size":20}` |
+| `treasury_history` | **POST**, **分页版** latest_history (返 `data: {list, total}` 嵌套, 全量 ~3648 条变动) | 专业版 | `{"coin":"BTC","page":1,"page_size":50}` |
+| `treasury_accumulated` | **POST**, 累积曲线 (返 `data: {accumulated_data: [...]}` 嵌套, 30 天每天一点). 字段 `total_cost_usd` 是历史累计成本, **不是当日**, 求日增量自己算差值。 | 专业版 | `{"coin":"BTC"}` |
 
 ### scripts/features.mjs — Features & Signals
 

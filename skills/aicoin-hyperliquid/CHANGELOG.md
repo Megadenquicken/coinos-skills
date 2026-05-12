@@ -38,6 +38,17 @@
 
 HL 上 686 个市场里有 ~150 个是第三方 deployer prefix 资产 (美股 / 商品 / 指数 / 主题), 调按 `coin` 过滤的接口必须用正确 prefix。具体分类见 SKILL.md。
 
+## 2026-05 收尾 polish — audit agent 找到的 P1/P2 漏修
+
+第一轮 (9a4762c/e50f36c) 后 audit agent 指出还有几条漏修。本轮 (6bddd69/<本 commit>) 补:
+
+### 脚本层一致性 (commit 6bddd69)
+- `current_pnl / current_executions` 缺 coin 校验 (之前只给 `current_pos_history` 加了 — 一致性破缺)
+- 三个 current_* 端点 + data:null 时加空数据 _note 引导改用 fills / performance
+
+### SKILL.md (本 commit)
+- `smart_find.perpValue/spotValue/totalValue` 是**历史最大账户价值聚合**, 不是当前账户净值; 要当前净值用 batch_clearinghouse_state.accountValue (G9-3 漏修补)
+
 ## 2026-05 收尾 — 9 并行 agent 测试 (G6-G9) 发现的坑
 
 ### 脚本层 silent wrong 修复 (commit 9a4762c)

@@ -188,7 +188,7 @@ Get at https://www.aicoin.com/opendata. See [Paid Feature Guide](#paid-feature-g
 | Action | Description | Min Tier | Params |
 |--------|-------------|----------|--------|
 | `info` | HL Info API 统一端点 (POST /api/upgrade/v2/hl/info) — 用 type 切不同子接口,见下方完整 types 表 | 免费版 | `{"type":"<type>","user":"<addr 可选>","extra_params":{<其它参数>}}` |
-| `smart_find` | Smart money discovery. **`positions` / `profitPositions` 是累计交易笔数, 不是当前持仓数** (Top1 `positions=602107` 意思是历史交易 60 万笔)。`winRate = profitPositions / positions` 累计胜率。`avgHoldingSec` 平均持仓秒数, 小值=高频量化, 跟单意义不大, 当**市场情绪信号**用。想看地址当前真实持仓用 `whale_positions` 按 user 过滤或 `performance`。 | 标准版 | `{}` |
+| `smart_find` | Smart money discovery. **`positions` / `profitPositions` 是累计交易笔数, 不是当前持仓数** (Top1 `positions=602107` 意思是历史交易 60 万笔)。`winRate = profitPositions / positions` 累计胜率。`avgHoldingSec` 平均持仓秒数, 小值=高频量化, 跟单意义不大, 当**市场情绪信号**用。`perpValue` / `spotValue` / `totalValue` 是**历史最大账户价值聚合**, 不是当前账户净值 — 要当前净值用 `batch_clearinghouse_state` 的 `accountValue`。想看地址当前真实持仓用 `whale_positions` 按 user 过滤或 `performance`。 | 标准版 | `{}` |
 | `discover` | Trader discovery. **字段命名不一致警告**: 跟 `smart_find` 不同 — discover 用 `snapPerpValue` / `snapTotalValue` / `positionCount`, smart_find 用 `perpValue` / `totalValue` / `positions`。跨这两个接口套字段会拿不到, 用前先看 raw 字段名。 | 高级版 | `{}` |
 | `discover_history` | Historical discovery | 高级版 | `{"pageNum":1,"pageSize":20,"period":7}` Optional: `startTime`, `time`, `sort`, `coins`, `selects`, `filters` |
 

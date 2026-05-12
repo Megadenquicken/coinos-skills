@@ -55,6 +55,31 @@ agent 调用时容易把上游故障当用户参数错,误导用户。
 - `search` 支持 page/page_size 翻页 (全库 ~350 个币)
 - `hot_coins` key 字典只 `defi` 通, `meme/new` 返空 — 用户问 meme 走 `coin.search`
 
+## 2026-05 收尾 polish — audit agent 找到的 P1/P2 漏修
+
+第一轮 (9a4762c/95b0f9a/e50f36c) 后 audit agent 指出还有 14 条 P1/P2 漏修。本轮 (6bddd69/<本 commit>) 补齐:
+
+### 脚本层一致性 (commit 6bddd69)
+- `features.agg_trades`: bybit 空 list _note (跟 stock_quotes data:null 一致性)
+- `hl-trader.current_pnl / current_executions`: 缺 coin 校验 (跟 current_pos_history 一致性)
+- 上述 3 个 current_* 端点 + data:null 加空数据 _note 引导
+
+### SKILL.md 跨接口约定 (本 commit)
+- 新增 "跨接口字段约定" 段落统一说明 (放在 Quick Reference 之前):
+  - 两套响应封装 (`{success,errorCode,data}` vs `{code,msg,data}`)
+  - 时间戳单位混杂 (kline 秒 / funding/OI/historical_depth/trade_data 毫秒 / estimated_liquidation time_points 秒)
+  - search.dbKeys string 不是 array (复述)
+  - search.price 是 CNY (复述)
+  - 多端点硬上限 100 条无翻页
+  - 数据时新性差异 (historical_depth 可能滞后 30h+)
+  - 字段类型 string/number 不统一 (coin_ticker 全 string / ls_ratio 混合 / kline 数组全 number)
+  - dbkey vs dbKeys vs key 命名混乱
+
+### treasury 系列 (3 个端点字段语义)
+- treasury_summary: 单 object 结构
+- treasury_latest_entities / latest_history: GET, `data: list[]` 直接数组
+- treasury_entities / history / accumulated: POST, 分页/嵌套结构差异
+
 ## 2026-05 收尾 — 9 并行 agent 测试 (145 endpoints) 发现的坑
 
 ### 脚本层 silent wrong 修复 (commit 9a4762c)
