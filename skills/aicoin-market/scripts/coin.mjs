@@ -86,8 +86,37 @@ cli({
   },
   // coin_info
   coin_list: () => apiGet('/api/v2/coin'),
-  coin_ticker: ({ coin_list }) => apiGet('/api/v2/coin/ticker', { coin_list }),
-  coin_config: ({ coin_list }) => apiGet('/api/v2/coin/config', { coin_list }),
+  coin_ticker: async ({ coin_list }) => {
+    const json = await apiGet('/api/v2/coin/ticker', { coin_list });
+    // 实测: 后端对 coin_list CSV 里不认识的 key 静默丢弃, agent 拿到 partial
+    // data 当全数据用就是 silent wrong。这里本地对比, 把缺失 key 列出来。
+    // AiCoin coin_key 命名无规律 (例: RNDRToken 驼峰 / fet1 数字后缀 /
+    // virtualprotocol 连写), 用 CoinGecko 或 CMC 风格名字几乎必踩。
+    if (coin_list && Array.isArray(json?.data)) {
+      const requested = String(coin_list).split(',').map(s => s.trim()).filter(Boolean);
+      const returned = new Set(json.data.map(d => d.coin_key));
+      const missing = requested.filter(k => !returned.has(k));
+      if (missing.length > 0) {
+        json._note = `coin_ticker: 传了 ${requested.length} 个 key, 后端只识别 ${returned.size} 个, 未识别: ${missing.join(',')}。AiCoin coin_key 命名无规律 (例: RNDRToken 驼峰 / fet1 数字后缀 / virtualprotocol 连写, 跟 CoinGecko / CMC 完全不一致)。**拿不准的 key 先用 coin.mjs search 查准确的 coin_key**, 不要把后端返的部分数据当全数据用。`;
+        json.unrecognized_keys = missing;
+      }
+    }
+    return json;
+  },
+  coin_config: async ({ coin_list }) => {
+    const json = await apiGet('/api/v2/coin/config', { coin_list });
+    // 同 coin_ticker, 后端对未识别 key 静默丢弃。
+    if (coin_list && Array.isArray(json?.data)) {
+      const requested = String(coin_list).split(',').map(s => s.trim()).filter(Boolean);
+      const returned = new Set(json.data.map(d => d.coin_key || d.coinKey));
+      const missing = requested.filter(k => !returned.has(k));
+      if (missing.length > 0) {
+        json._note = `coin_config: 传了 ${requested.length} 个 key, 后端只识别 ${returned.size} 个, 未识别: ${missing.join(',')}。先用 coin.mjs search 查准确的 coin_key。`;
+        json.unrecognized_keys = missing;
+      }
+    }
+    return json;
+  },
   ai_analysis: aiAnalysisImpl,
   // alias: SKILL.md 早期用 ai_coins, 实际 action 名是 ai_analysis。保留兼容。
   ai_coins: aiAnalysisImpl,
@@ -134,11 +163,20 @@ cli({
     return apiGet('/api/upgrade/v2/futures/estimated-liquidation/history', p);
   },
   // coin_open_interest
-  open_interest: ({ symbol, interval, margin_type = 'stablecoin', limit = '100', start_time, end_time }) => {
+  open_interest: async ({ symbol, interval, margin_type = 'stablecoin', limit = '100', start_time, end_time }) => {
+    const resolved = resolveSymbol(symbol);
+    // 实测 (Q2 v2): AiCoin open_interest 跟 funding_rate 一样, 只覆盖 BTC。
+    // 传 SOL/ETH/其他静默返空 list, agent 拿空 list 当"OI 为零"误判方向。
+    if (resolved && !resolved.toLowerCase().startsWith('btc')) {
+      return {
+        success: true, errorCode: 200, data: [],
+        _note: `AiCoin open_interest 仅支持 BTC, 传 ${symbol} 后端静默返空 (不是 OI 真的为零)。**改用 exchange skill** 例如 \`node scripts/exchange.mjs open_interest '{"exchange":"binance","symbol":"${symbol}/USDT:USDT"}'\`, 或者从 HL skill 拿 \`hl-market ticker\` 看 HL 上的 OI。`,
+      };
+    }
     const path = margin_type === 'coin'
       ? '/api/upgrade/v2/futures/open-interest/aggregated-coin-margin-history'
       : '/api/upgrade/v2/futures/open-interest/aggregated-stablecoin-history';
-    const p = { symbol, interval, limit };
+    const p = { symbol: resolved, interval, limit };
     if (start_time) p.start_time = start_time; if (end_time) p.end_time = end_time;
     return apiGet(path, p);
   },
@@ -172,7 +210,7 @@ cli({
   long_short_ratio: () => apiGet('/api/v2/mix/ls-ratio'),
 
   // API Key status check — run this when user asks about AiCoin API key config/safety
-  api_key_info: async () => {
+  api_key_info: async ({ probe } = {}) => {
     const envPaths = [
       resolve(process.cwd(), '.env'),
       resolve(process.env.HOME || '', '.openclaw', 'workspace', '.env'),
@@ -191,12 +229,43 @@ cli({
         }
       } catch {}
     }
-    return {
+    const out = {
       aicoin_key_status: keyInfo.configured
         ? keyInfo
         : { configured: false, setup: '访问 https://www.aicoin.com/opendata 注册 → 创建API Key → 添加到 .env: AICOIN_ACCESS_KEY_ID=xxx / AICOIN_ACCESS_SECRET=xxx' },
       security_notice: '⚠️ AiCoin API Key 与交易所 API Key 是完全独立的两套密钥：(1) AiCoin API Key 仅用于获取市场数据（行情、K线、资金费率等），无法进行任何交易操作，也无法读取你在交易所的任何信息。(2) 如需在交易所下单交易，需要单独到各交易所后台申请交易 API Key。(3) 所有密钥仅保存在你的本地设备 .env 文件中，不会上传到任何服务器。',
     };
+    // 实测 (v3 9 并行测试): 配置文件里写着 vip_type=professional 不代表 key 实际权限有效,
+    // 过期后部分接口会退权限但 .env 里还看不出来。probe=true 时实跑 4 个分档接口看真档位。
+    // **串行** 避免触发限流误判。
+    if (probe && keyInfo.configured) {
+      const probes = [
+        { tier: '免费版', name: 'coin_ticker', path: '/api/v2/coin/ticker', params: { coin_list: 'bitcoin' } },
+        { tier: '基础版', name: 'funding_rate', path: '/api/upgrade/v2/futures/funding-rate/history', params: { symbol: 'btcswapusdt:binance', interval: '8h', limit: '1' } },
+        { tier: '标准版', name: 'big_orders', path: '/api/v2/order/bigOrder', params: { symbol: 'btcswapusdt:binance' } },
+        { tier: '专业版', name: 'treasury_summary', path: '/api/upgrade/v2/coin-treasuries/summary', params: { coin: 'BTC' } },
+      ];
+      const results = [];
+      for (const p of probes) {
+        try {
+          const r = await apiGet(p.path, p.params);
+          const ok = r.success !== false && r.code !== '403';
+          results.push({ tier: p.tier, action: p.name, status: ok ? 'OK' : (r.errorCode === 304 ? '304/未授权' : 'unknown'), error: ok ? null : (r.error || r.msg || '').slice(0, 80) });
+        } catch (e) {
+          const m = (e.message || '').match(/^API (\d+):/);
+          const code = m ? m[1] : 'ERR';
+          results.push({ tier: p.tier, action: p.name, status: `HTTP ${code}`, error: (e.message || '').slice(0, 80) });
+        }
+        // 串行间隔, 避 burst 限流
+        await new Promise(r => setTimeout(r, 300));
+      }
+      out.tier_probe = results;
+      const okTiers = results.filter(r => r.status === 'OK').map(r => r.tier);
+      out.tier_probe_summary = okTiers.length === 0
+        ? 'key 完全不工作 (可能彻底失效)'
+        : `实际通的档位: ${okTiers.join(' / ')}。**这是真档位, 不是 .env 里声明的档位**。`;
+    }
+    return out;
   },
 
   // Update AiCoin API key — validates before writing to .env

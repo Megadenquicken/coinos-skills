@@ -132,12 +132,57 @@ cli({
     }
   },
   // coin_treasury
-  treasury_entities: (body) => apiPost('/api/upgrade/v2/coin-treasuries/entities', body),
-  treasury_history: (body) => apiPost('/api/upgrade/v2/coin-treasuries/history', body),
-  treasury_accumulated: (body) => apiPost('/api/upgrade/v2/coin-treasuries/history/accumulated', body),
-  treasury_latest_entities: ({ coin }) => apiGet('/api/upgrade/v2/coin-treasuries/latest/entities', { coin }),
-  treasury_latest_history: ({ coin }) => apiGet('/api/upgrade/v2/coin-treasuries/latest/history', { coin }),
-  treasury_summary: ({ coin }) => apiGet('/api/upgrade/v2/coin-treasuries/summary', { coin }),
+  // 实测: treasury_* 全套只支持 coin=BTC 或 ETH, 传 SOL/其他会 400。
+  // 本地拦截以省签名 + 给 agent 明确边界。
+  treasury_entities: async (body = {}) => {
+    if (body.coin && !/^(BTC|ETH)$/i.test(body.coin)) {
+      return { success: false, errorCode: 400, error: `treasury_entities 仅支持 coin=BTC 或 ETH (传入: ${body.coin})。其他币的上市公司持币数据 AiCoin 没覆盖, 可查公开源 bitcointreasuries.net 或 ethtreasuries.com。` };
+    }
+    const json = await apiPost('/api/upgrade/v2/coin-treasuries/entities', body);
+    // 实测 (Q9 v2 subagent): share 字段对 BTC 和 ETH 量级不一致 — BTC 实例
+    // 里是小数 (0.012 表示 1.2%), ETH 实例里直接是百分数 (1.2 表示 1.2%)。
+    // agent 跨币种横比时容易闹乌龙。提示 agent 注意。
+    if (Array.isArray(json?.data) && body.coin) {
+      json._note = `⚠️ share 字段口径在 BTC/ETH 之间可能不一致 (BTC 实例: 小数, 如 0.012 = 1.2%; ETH 实例: 百分数, 如 1.2 = 1.2%)。**跨币种比 share 前先用一个已知持有量验证一下口径**, 不要直接拿数字比大小。`;
+    }
+    return json;
+  },
+  treasury_history: async (body = {}) => {
+    if (body.coin && !/^(BTC|ETH)$/i.test(body.coin)) {
+      return { success: false, errorCode: 400, error: `treasury_history 仅支持 coin=BTC 或 ETH (传入: ${body.coin})。` };
+    }
+    return apiPost('/api/upgrade/v2/coin-treasuries/history', body);
+  },
+  treasury_accumulated: async (body = {}) => {
+    if (body.coin && !/^(BTC|ETH)$/i.test(body.coin)) {
+      return { success: false, errorCode: 400, error: `treasury_accumulated 仅支持 coin=BTC 或 ETH (传入: ${body.coin})。` };
+    }
+    const json = await apiPost('/api/upgrade/v2/coin-treasuries/history/accumulated', body);
+    // 实测 (Q9 v2): SKILL 里描述"返 30 天每天一个点", 实际 ETH 数据返了
+    // 跨 5 个月的不连续点。窗口口径跟描述对不上。
+    if (Array.isArray(json?.data) && json.data.length > 0) {
+      json._note = `⚠️ 实测时间窗口口径跟早期文档描述对不上 — 不一定是"30 天每天一点", 后端可能返非等间隔多月历史。**用前先看返回里 timestamp 的实际跨度**, 不要拿描述当 ground truth。`;
+    }
+    return json;
+  },
+  treasury_latest_entities: async ({ coin }) => {
+    if (coin && !/^(BTC|ETH)$/i.test(coin)) {
+      return { success: false, errorCode: 400, error: `treasury_latest_entities 仅支持 coin=BTC 或 ETH (传入: ${coin})。` };
+    }
+    return apiGet('/api/upgrade/v2/coin-treasuries/latest/entities', { coin });
+  },
+  treasury_latest_history: async ({ coin }) => {
+    if (coin && !/^(BTC|ETH)$/i.test(coin)) {
+      return { success: false, errorCode: 400, error: `treasury_latest_history 仅支持 coin=BTC 或 ETH (传入: ${coin})。` };
+    }
+    return apiGet('/api/upgrade/v2/coin-treasuries/latest/history', { coin });
+  },
+  treasury_summary: async ({ coin }) => {
+    if (coin && !/^(BTC|ETH)$/i.test(coin)) {
+      return { success: false, errorCode: 400, error: `treasury_summary 仅支持 coin=BTC 或 ETH (传入: ${coin})。` };
+    }
+    return apiGet('/api/upgrade/v2/coin-treasuries/summary', { coin });
+  },
   // depth
   depth_latest: ({ symbol, dbKey, size }) => {
     const p = { dbKey: symbol || dbKey };
