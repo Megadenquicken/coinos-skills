@@ -74,11 +74,18 @@ cli({
     if (blocked) return Promise.resolve(blocked);
     return apiGet('/api/v2/order/bigOrder', { symbol: fixed });
   },
-  agg_trades: ({ symbol }) => {
+  agg_trades: async ({ symbol }) => {
     const fixed = fixPlatformAlias(symbol);
     const blocked = checkBigOrdersSupport(fixed);
-    if (blocked) return Promise.resolve(blocked);
-    return apiGet('/api/v2/order/aggTrade', { symbol: fixed });
+    if (blocked) return blocked;
+    const json = await apiGet('/api/v2/order/aggTrade', { symbol: fixed });
+    // 实测: bybit U 永续上 agg_trades 后端经常返 success=true 但 data.list=[] 空,
+    // 不是接口故障也不是参数错。给 agent 明确 _note 避免误判。
+    const list = json?.data?.list;
+    if (Array.isArray(list) && list.length === 0) {
+      json._note = `agg_trades '${fixed}' 返空 list (success=true 但 data.list=[])。不是接口故障 — bybit U 永续等部分交易所后端经常空, 或者当前窗口确实没大单成交。换交易所 (binance/okcoinfutures) 或稍后重试。`;
+    }
+    return json;
   },
   // trading_pair
   pair_ticker: ({ key_list }) => apiGet('/api/v2/trading-pair/ticker', { key_list }),

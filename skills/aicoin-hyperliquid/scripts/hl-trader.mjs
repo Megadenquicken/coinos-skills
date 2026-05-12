@@ -123,16 +123,20 @@ cli({
     return apiGet(`/api/upgrade/v2/hl/twap-states/${address}/latest`, p);
   },
   // hl_position
-  current_pos_history: ({ address, coin } = {}) => {
-    const err = requireAddress(address); if (err) return Promise.resolve(err);
+  current_pos_history: async ({ address, coin } = {}) => {
+    const err = requireAddress(address); if (err) return err;
     if (!coin) {
-      return Promise.resolve({
+      return {
         success: false, errorCode: 400,
         error: 'current_pos_history 必填 coin (例: BTC / ETH / cash:TSLA)',
         参数提示: '缺 coin 会拼出 /undefined URL 上游返 null 误导, 现已本地拦截。',
-      });
+      };
     }
-    return apiGet(`/api/upgrade/v2/hl/traders/${address}/current-position-history/${coin}`);
+    const json = await apiGet(`/api/upgrade/v2/hl/traders/${address}/current-position-history/${coin}`);
+    if (json && (json.data === null || (Array.isArray(json.data) && json.data.length === 0))) {
+      json._note = `current_pos_history 该地址 ${coin} 当前无持仓 (data 空)。先用 fills (按地址列实际活跃币种) 或 performance 确认地址主攻哪些币。`;
+    }
+    return json;
   },
   completed_pos_history: async ({ address, coin, startTime, endTime } = {}) => {
     const err = requireAddress(address); if (err) return err;
@@ -147,11 +151,22 @@ cli({
     const json = await apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-history/${coin}`, p);
     return wrapPositionNotFound(json, '改用 completed_trades (按地址列已平仓交易) 或 fills (按地址列所有成交) 拿历史。');
   },
-  current_pnl: ({ address, coin, interval, limit } = {}) => {
-    const err = requireAddress(address); if (err) return Promise.resolve(err);
+  current_pnl: async ({ address, coin, interval, limit } = {}) => {
+    const err = requireAddress(address); if (err) return err;
+    if (!coin) {
+      return {
+        success: false, errorCode: 400,
+        error: 'current_pnl 必填 coin (例: BTC / ETH / cash:TSLA)',
+        参数提示: '缺 coin 会拼出 /undefined URL 上游返 null 误导, 现已本地拦截。',
+      };
+    }
     // 实测: interval 必填 (返 missing interval), 默认 1h
     const p = { interval: interval || '1h' }; if (limit) p.limit = limit;
-    return apiGet(`/api/upgrade/v2/hl/traders/${address}/current-position-pnl/${coin}`, p);
+    const json = await apiGet(`/api/upgrade/v2/hl/traders/${address}/current-position-pnl/${coin}`, p);
+    if (json && (json.data === null || (Array.isArray(json.data) && json.data.length === 0))) {
+      json._note = `current_pnl 该地址 ${coin} 当前无持仓 (data 空)。先用 fills (按地址列实际活跃币种) 或 performance (per-coin 业绩) 确认地址主攻哪些币。`;
+    }
+    return json;
   },
   completed_pnl: async ({ address, coin, interval, startTime, endTime, limit } = {}) => {
     const err = requireAddress(address); if (err) return err;
@@ -168,10 +183,21 @@ cli({
     const json = await apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-pnl/${coin}`, p);
     return wrapPositionNotFound(json, '改用 pnls (整地址 PnL 曲线) 或 best_trades (按地址盈利交易)。');
   },
-  current_executions: ({ address, coin, interval, limit } = {}) => {
-    const err = requireAddress(address); if (err) return Promise.resolve(err);
+  current_executions: async ({ address, coin, interval, limit } = {}) => {
+    const err = requireAddress(address); if (err) return err;
+    if (!coin) {
+      return {
+        success: false, errorCode: 400,
+        error: 'current_executions 必填 coin (例: BTC / ETH / cash:TSLA)',
+        参数提示: '缺 coin 会拼出 /undefined URL 上游返 null 误导, 现已本地拦截。',
+      };
+    }
     const p = { interval: interval || '1h' }; if (limit) p.limit = limit;
-    return apiGet(`/api/upgrade/v2/hl/traders/${address}/current-position-executions/${coin}`, p);
+    const json = await apiGet(`/api/upgrade/v2/hl/traders/${address}/current-position-executions/${coin}`, p);
+    if (json && (json.data === null || (Array.isArray(json.data) && json.data.length === 0))) {
+      json._note = `current_executions 该地址 ${coin} 当前无持仓 (data 空)。先用 fills (按地址列实际活跃币种) 或 performance 确认地址主攻哪些币。`;
+    }
+    return json;
   },
   completed_executions: async ({ address, coin, interval, startTime, endTime, limit } = {}) => {
     const err = requireAddress(address); if (err) return err;
