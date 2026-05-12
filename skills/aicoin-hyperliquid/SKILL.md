@@ -33,6 +33,7 @@ Hyperliquid whale tracking and analytics powered by [AiCoin Open API](https://ww
 - 单地址端点缺 address 时脚本本地拦截, 不再产生 `traders/undefined/...` 这种错误 URL
 - `smart_find` 只返地址 + 通用业绩字段(realizedPnl/胜率/leverage 等), **没有"该地址做什么币"的字段**。想知道地址主攻哪些币, 拿 address 后再调 `performance '{"address":"0x..."}'` 看 per-coin 拆解
 - HL 后端把 "position not found" 这类**业务错误**塞到 HTTP 200 body `{code:"400", msg:"position not found"}` 里(不是 HTTP 4xx), `completed_*` 三个端点已在脚本里 wrap 这种 body 给清晰提示, agent 不要自己解析 raw `code` 字段
+- **`smart_find` 字段语义陷阱**: 返回每个 trader 的 `positions` / `profitPositions` 字段是**累计交易笔数**(不是"当前持有几个仓"), 例如 Top 1 `positions=602107` 意思是这地址历史上交易过 60 万笔, 不是现在打开 60 万个仓。 `winRate = profitPositions / positions` 算的是累计胜率。 `avgHoldingSec` 是平均持仓秒数, Top1 常见值 0.1 小时(6 分钟) → 高频量化风格, 跟单意义不大, 当**市场情绪信号**用。 想看"该地址当前真实持有的仓位"用 `whale_positions` 按 user 过滤或 `performance '{"address":"0x..."}'`。
 - **HL 上同名资产可能存在多个市场 (HIP-3 deployer)**: `tickers` 返回 ~686 个市场, 除了 184 个常规 crypto perp (裸大写名 `BTC` / `ETH` / `SOL`) 和 280 个 spot index (`@N` 格式), 还有 7 类 HIP-3 第三方 deployer prefix:
     - `cash:` / `xyz:` — 美股合成 (cash:TSLA, xyz:AMZN, cash:NVDA 等)
     - `flx:` — 贵金属/指数/商品 (flx:GOLD, flx:USA500, flx:OIL, flx:COPPER)
