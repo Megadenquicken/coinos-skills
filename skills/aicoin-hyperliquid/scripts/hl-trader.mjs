@@ -2,28 +2,59 @@
 // Hyperliquid Trader Analytics CLI
 import { apiGet, apiPost, cli } from '../lib/aicoin-api.mjs';
 
+// portfolio window 实测仅支持这 4 个值,其他 (perpAllTime, allTimePerp 等) 一律 400
+const PORTFOLIO_WINDOWS = new Set(['day', 'week', 'month', 'allTime']);
+
+// 单地址必填校验, 避免 URL 拼出 `traders/undefined/...` 然后上游 404
+function requireAddress(address) {
+  if (!address) {
+    return {
+      success: false,
+      errorCode: 400,
+      error: 'address 必填 (HL 钱包地址, 例 0x...)。先用 smart_find 拿聪明钱列表, 或让用户提供。',
+    };
+  }
+  return null;
+}
+
 cli({
-  // hl_trader
+  // hl_trader — period 实测必填且没默认, 不传 400。这里给 "30" (30 天) 兜底。
   trader_stats: ({ address, period }) => {
-    const p = {}; if (period) p.period = period;
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
+    const p = { period: period || '30' };
     return apiGet(`/api/upgrade/v2/hl/traders/${address}/addr-stat`, p);
   },
   best_trades: ({ address, period, limit }) => {
-    const p = { period }; if (limit) p.limit = limit;
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
+    const p = { period: period || '30' }; if (limit) p.limit = limit;
     return apiGet(`/api/upgrade/v2/hl/traders/${address}/best-trades`, p);
   },
   performance: ({ address, period, limit }) => {
-    const p = { period }; if (limit) p.limit = limit;
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
+    const p = { period: period || '30' }; if (limit) p.limit = limit;
     return apiGet(`/api/upgrade/v2/hl/traders/${address}/performance-by-coin`, p);
   },
   completed_trades: ({ address, coin, limit }) => {
     const p = {}; if (coin) p.coin = coin; if (limit) p.limit = limit;
     return apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-trades`, p);
   },
-  accounts: ({ addresses }) => {
+  accounts: async ({ addresses }) => {
     let addrs = addresses;
     if (typeof addrs === 'string') { try { addrs = JSON.parse(addrs); } catch { addrs = [addrs]; } }
-    return apiPost('/api/upgrade/v2/hl/traders/accounts', { addresses: addrs });
+    try {
+      return await apiPost('/api/upgrade/v2/hl/traders/accounts', { addresses: addrs });
+    } catch (e) {
+      // 实测: 即使 addresses 格式正确, 后端也偶发 500。statistics 同输入正常。
+      if (/^API 5\d\d/.test(e.message)) {
+        return {
+          success: false,
+          errorCode: 500,
+          error: e.message,
+          实测结论: 'hl/traders/accounts 端点后端不稳, 实测 500 但同样的 addresses 调 statistics 正常。请改用 statistics + batch_clearinghouse_state 拿同样数据, 或告知用户"该接口后端故障, 联系 AiCoin 客服 (service@aicoin.com) 报修"。',
+        };
+      }
+      throw e;
+    }
   },
   statistics: ({ addresses }) => {
     let addrs = addresses;
@@ -37,8 +68,9 @@ cli({
   },
   fills_by_oid: ({ oid }) => apiGet(`/api/upgrade/v2/hl/fills/oid/${oid}`),
   fills_by_twapid: ({ twapid }) => apiGet(`/api/upgrade/v2/hl/fills/twapid/${twapid}`),
-  top_trades: ({ coin, interval, limit }) => {
-    const p = { coin, interval }; if (limit) p.limit = limit;
+  top_trades: ({ coin, interval, limit } = {}) => {
+    // 实测: interval 必填, 默认 1h
+    const p = { coin, interval: interval || '1h' }; if (limit) p.limit = limit;
     return apiGet('/api/upgrade/v2/hl/fills/top-trades', p);
   },
   // hl_orders
@@ -66,34 +98,116 @@ cli({
   },
   // hl_position
   current_pos_history: ({ address, coin }) => apiGet(`/api/upgrade/v2/hl/traders/${address}/current-position-history/${coin}`),
-  completed_pos_history: ({ address, coin, startTime, endTime }) => {
+  completed_pos_history: async ({ address, coin, startTime, endTime } = {}) => {
+    const err = requireAddress(address); if (err) return err;
+    if (!startTime && !endTime) {
+      return {
+        success: false, errorCode: 400,
+        error: 'completed_pos_history 必填 startTime 或 endTime 之一 (ms epoch)',
+        参数提示: '换用 completed_trades (按地址列已平仓交易无需时间窗)。',
+      };
+    }
     const p = {}; if (startTime) p.startTime = startTime; if (endTime) p.endTime = endTime;
-    return apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-history/${coin}`, p);
+    try {
+      return await apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-history/${coin}`, p);
+    } catch (e) {
+      // 实测 4 个真实地址全 400 'position not found'。后端按 positionId 不按 address+coin。
+      if (/position not found/i.test(e.message)) {
+        return {
+          success: false,
+          errorCode: 400,
+          error: e.message,
+          实测结论: 'completed-position-history 实测按 positionId 取数, 不接受 address+coin 组合。agent 拿不到 positionId 用不了这个接口。改用 completed_trades (按地址列已平仓交易) 或 fills (按地址列所有成交) 拿历史。',
+        };
+      }
+      throw e;
+    }
   },
-  current_pnl: ({ address, coin, interval, limit }) => {
-    const p = {}; if (interval) p.interval = interval; if (limit) p.limit = limit;
+  current_pnl: ({ address, coin, interval, limit } = {}) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
+    // 实测: interval 必填 (返 missing interval), 默认 1h
+    const p = { interval: interval || '1h' }; if (limit) p.limit = limit;
     return apiGet(`/api/upgrade/v2/hl/traders/${address}/current-position-pnl/${coin}`, p);
   },
-  completed_pnl: ({ address, coin, interval, startTime, endTime, limit }) => {
-    const p = {}; if (interval) p.interval = interval; if (startTime) p.startTime = startTime; if (endTime) p.endTime = endTime; if (limit) p.limit = limit;
-    return apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-pnl/${coin}`, p);
+  completed_pnl: async ({ address, coin, interval, startTime, endTime, limit } = {}) => {
+    const err = requireAddress(address); if (err) return err;
+    // 实测: 除 interval, 还必须传 startTime 或 endTime 之一 (ms epoch). agent 应该自己算时间窗。
+    if (!startTime && !endTime) {
+      return {
+        success: false,
+        errorCode: 400,
+        error: 'completed_pnl 必填 startTime 或 endTime 之一 (ms epoch)',
+        参数提示: '例: startTime=Date.now()-30*86400*1000 取过去 30 天。或换用 pnls (全地址 PnL 曲线无需时间窗)。',
+      };
+    }
+    const p = { interval: interval || '1h' }; if (startTime) p.startTime = startTime; if (endTime) p.endTime = endTime; if (limit) p.limit = limit;
+    try {
+      return await apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-pnl/${coin}`, p);
+    } catch (e) {
+      if (/position not found/i.test(e.message)) {
+        return {
+          success: false, errorCode: 400, error: e.message,
+          实测结论: 'completed-position-pnl 实测按 positionId 取数, address+coin 组合 400。agent 拿不到 positionId。改用 pnls (整地址 PnL 曲线) 或 best_trades (按地址盈利交易)。',
+        };
+      }
+      throw e;
+    }
   },
-  current_executions: ({ address, coin, interval, limit }) => {
-    const p = {}; if (interval) p.interval = interval; if (limit) p.limit = limit;
+  current_executions: ({ address, coin, interval, limit } = {}) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
+    const p = { interval: interval || '1h' }; if (limit) p.limit = limit;
     return apiGet(`/api/upgrade/v2/hl/traders/${address}/current-position-executions/${coin}`, p);
   },
-  completed_executions: ({ address, coin, interval, startTime, endTime, limit }) => {
-    const p = {}; if (interval) p.interval = interval; if (startTime) p.startTime = startTime; if (endTime) p.endTime = endTime; if (limit) p.limit = limit;
-    return apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-executions/${coin}`, p);
+  completed_executions: async ({ address, coin, interval, startTime, endTime, limit } = {}) => {
+    const err = requireAddress(address); if (err) return err;
+    if (!startTime && !endTime) {
+      return {
+        success: false, errorCode: 400,
+        error: 'completed_executions 必填 startTime 或 endTime 之一 (ms epoch)',
+        参数提示: '换用 fills (按地址全量成交无需时间窗)。',
+      };
+    }
+    const p = { interval: interval || '1h' }; if (startTime) p.startTime = startTime; if (endTime) p.endTime = endTime; if (limit) p.limit = limit;
+    try {
+      return await apiGet(`/api/upgrade/v2/hl/traders/${address}/completed-position-executions/${coin}`, p);
+    } catch (e) {
+      if (/position not found/i.test(e.message)) {
+        return {
+          success: false, errorCode: 400, error: e.message,
+          实测结论: 'completed-position-executions 实测按 positionId 取数, address+coin 组合 400。agent 拿不到 positionId。改用 fills (按地址列所有成交)。',
+        };
+      }
+      throw e;
+    }
   },
-  // hl_portfolio
-  portfolio: ({ address, window }) => apiGet(`/api/upgrade/v2/hl/portfolio/${address}/${window}`),
-  pnls: ({ address, period }) => {
-    const p = {}; if (period) p.period = period;
+  // hl_portfolio — window 仅 day/week/month/allTime, 其他值上游 400。校验后再调。
+  portfolio: ({ address, window }) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
+    const w = window || 'day';
+    if (!PORTFOLIO_WINDOWS.has(w)) {
+      return Promise.resolve({
+        success: false,
+        errorCode: 400,
+        error: `portfolio window 仅接受 day / week / month / allTime, 收到 "${w}"`,
+        参数错误提示: '请改用合法 window 值, 不要尝试 perpAllTime / allTimePerp 这类组合。',
+      });
+    }
+    return apiGet(`/api/upgrade/v2/hl/portfolio/${address}/${w}`);
+  },
+  pnls: ({ address, period } = {}) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
+    const p = { period: period || '30' };
     return apiGet(`/api/upgrade/v2/hl/pnls/${address}`, p);
   },
-  max_drawdown: ({ address, days, scope = 'perp' }) => apiGet(`/api/upgrade/v2/hl/max-drawdown/${address}`, { days, scope }),
-  net_flow: ({ address, days }) => apiGet(`/api/upgrade/v2/hl/ledger-updates/net-flow/${address}`, { days }),
+  // max_drawdown / net_flow — days 实测必填, 默认 30
+  max_drawdown: ({ address, days, scope = 'perp' } = {}) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
+    return apiGet(`/api/upgrade/v2/hl/max-drawdown/${address}`, { days: days || '30', scope });
+  },
+  net_flow: ({ address, days } = {}) => {
+    const err = requireAddress(address); if (err) return Promise.resolve(err);
+    return apiGet(`/api/upgrade/v2/hl/ledger-updates/net-flow/${address}`, { days: days || '30' });
+  },
   // hl_advanced
   info: ({ type, user, extra_params }) => {
     const body = { type }; if (user) body.user = user;

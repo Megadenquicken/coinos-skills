@@ -2,6 +2,37 @@
 // AiCoin Features & Signals CLI
 import { apiGet, cli } from '../lib/aicoin-api.mjs';
 
+// AiCoin 平台命名坑修正(big_orders/agg_trades 必用,否则 304 "无效的交易对"):
+//  - OKX 永续是 "okcoinfutures" 不是 "okex" (okex 是现货)
+//  - Bitget 永续 symbol 是 "btcumcblusdt:bitget" 不是 "btcswapusdt:bitget"
+function fixPlatformAlias(s) {
+  if (!s || !s.includes(':')) return s;
+  if (/swap.*:okex$/i.test(s)) return s.replace(/:okex$/i, ':okcoinfutures');
+  if (/swapusdt:bitget$/i.test(s)) return s.replace(/swapusdt:bitget$/i, 'umcblusdt:bitget');
+  return s;
+}
+
+// big_orders/agg_trades 已知不支持的交易所(实测): huobi/huobifutures/kraken/
+// deribit/mexc/kucoin/bithumb/bitfinex/binancespot 等。遇到这些 platform 直接
+// 返回一个清晰的错误说明,不去调上游浪费一次签名。
+const BIG_ORDERS_UNSUPPORTED = new Set([
+  'huobi', 'huobifutures', 'huobiproswap', 'kraken', 'deribit', 'mexc',
+  'kucoin', 'bithumb', 'bitfinex', 'binancespot', 'bybitswap', 'gateswap',
+]);
+function checkBigOrdersSupport(symbol) {
+  if (!symbol || !symbol.includes(':')) return null;
+  const platform = symbol.split(':').pop().toLowerCase();
+  if (BIG_ORDERS_UNSUPPORTED.has(platform)) {
+    return {
+      success: false,
+      errorCode: 304,
+      error: `big_orders/agg_trades 不支持交易所 "${platform}"。当前支持: binance(永续+现货) / okcoinfutures(OKX 永续) / bybit / bitget(symbol 用 btcumcblusdt) / gate / coinbase / upbit`,
+      参数错误提示: `不要将该错误描述为付费问题或参数格式问题。请告知用户:"AiCoin 主力大单/大单成交目前只覆盖头部 8 家交易所,${platform} 不在列表里"`,
+    };
+  }
+  return null;
+}
+
 cli({
   // market_overview
   nav: ({ language, lan } = {}) => { const p = {}; const lg = language || lan; if (lg) p.lan = lg; return apiGet('/api/v2/mix/nav', p); },
@@ -14,23 +45,62 @@ cli({
     if (marketKey) p.marketKey = marketKey;
     return apiGet('/api/v2/mix/liq', p);
   },
+  // alias: 早期 SKILL.md 用 `liq`,实际 action 是 `liquidation`
+  liq: function(args) { return this.liquidation(args); },
   grayscale_trust: () => apiGet('/api/v2/mix/grayscale-trust'),
-  gray_scale: ({ coins }) => apiGet('/api/v2/mix/gray-scale', { coins }),
+  // gray_scale 接受 coin key 必须小写完整名 (bitcoin/ethereum), 不是 ticker (BTC/ETH)
+  gray_scale: ({ coins }) => {
+    const norm = String(coins || '').split(',').map(c => {
+      const low = c.trim().toLowerCase();
+      if (low === 'btc') return 'bitcoin';
+      if (low === 'eth') return 'ethereum';
+      return low;
+    }).join(',');
+    return apiGet('/api/v2/mix/gray-scale', { coins: norm });
+  },
   stock_market: () => apiGet('/api/v2/mix/stock-market'),
-  // order_flow
-  big_orders: ({ symbol }) => apiGet('/api/v2/order/bigOrder', { symbol }),
-  agg_trades: ({ symbol }) => apiGet('/api/v2/order/aggTrade', { symbol }),
+  // order_flow — 必须经 fixPlatformAlias + 支持列表校验
+  big_orders: ({ symbol }) => {
+    const fixed = fixPlatformAlias(symbol);
+    const blocked = checkBigOrdersSupport(fixed);
+    if (blocked) return Promise.resolve(blocked);
+    return apiGet('/api/v2/order/bigOrder', { symbol: fixed });
+  },
+  agg_trades: ({ symbol }) => {
+    const fixed = fixPlatformAlias(symbol);
+    const blocked = checkBigOrdersSupport(fixed);
+    if (blocked) return Promise.resolve(blocked);
+    return apiGet('/api/v2/order/aggTrade', { symbol: fixed });
+  },
   // trading_pair
   pair_ticker: ({ key_list }) => apiGet('/api/v2/trading-pair/ticker', { key_list }),
   pair_by_market: ({ market }) => apiGet('/api/v2/trading-pair/getTradingPair', { market }),
   pair_list: ({ market, currency, show }) => {
+    if (!market) {
+      return Promise.resolve({
+        success: false,
+        errorCode: 400,
+        error: 'pair_list 必填 market 参数 (例: binance/okex/bybit)',
+        参数错误提示: '请告知用户先指定交易所',
+      });
+    }
     const p = { market };
     if (currency) p.currency = currency;
     if (show) p.show = show;
     return apiGet('/api/v2/trading-pair', p);
   },
-  // signal_data
+  // signal_data — strategy_signal 当前后端参数 spec 未公开,所有 SKILL.md 推荐
+  // 参数实测都 400("invalid parameters")。给 agent 明确提示别浪费 token 试错。
   strategy_signal: ({ coin_type, signal_key, latest_time } = {}) => {
+    if (!coin_type && !signal_key) {
+      return Promise.resolve({
+        success: false,
+        errorCode: 400,
+        error: 'strategy_signal 当前后端 broken: 所有公开的 signal_key 格式 (depth_win_one / ma:1440:single_ma:7 / macd:5:fork:12,26,9) 实测都返 400',
+        实测结论: '请告知用户"AiCoin 策略胜率信号接口暂不可用,需联系 AiCoin 客服 (service@aicoin.com) 获取正确 signal_key 格式或等待修复"。不要重试推测的参数。',
+        替代方案: '想看技术指标信号可用 change_signal (异动信号) 或 signal_alert (用户配置的预警)',
+      });
+    }
     const p = {};
     if (coin_type) p.coin_type = coin_type;
     if (signal_key) p.signal_key = signal_key;

@@ -36,8 +36,9 @@ cli({
     const p = {}; if (interval) p.interval = interval;
     return apiGet('/api/upgrade/v2/hl/liquidations/stat-by-coin', p);
   },
-  liq_top_positions: ({ coin, interval, limit }) => {
-    const p = { coin, interval }; if (limit) p.limit = limit;
+  liq_top_positions: ({ coin, interval, limit } = {}) => {
+    // 实测: interval 必填, 不传 400。默认 1h (滚动窗口分析最常用粒度)。
+    const p = { coin, interval: interval || '1h' }; if (limit) p.limit = limit;
     return apiGet('/api/upgrade/v2/hl/liquidations/top-positions', p);
   },
   oi_summary: () => apiGet('/api/upgrade/v2/hl/open-interest/summary'),
@@ -49,8 +50,9 @@ cli({
     const p = {}; if (interval) p.interval = interval;
     return apiGet(`/api/upgrade/v2/hl/open-interest/history/${coin}`, p);
   },
-  taker_delta: ({ coin, interval }) => {
-    const p = {}; if (interval) p.interval = interval;
+  taker_delta: ({ coin, interval } = {}) => {
+    // 实测: interval 必填。默认 1h (跟 taker_klines/liq_top_positions 对齐)。
+    const p = { interval: interval || '1h' };
     return apiGet(`/api/upgrade/v2/hl/accumulated-taker-delta/${coin}`, p);
   },
   taker_klines: ({ coin, interval = '4h', startTime, endTime, limit } = {}) => {

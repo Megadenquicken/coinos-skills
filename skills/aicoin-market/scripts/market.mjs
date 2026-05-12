@@ -89,7 +89,23 @@ cli({
     if (hk_stock != null) p.hk_stock = hk_stock;
     return apiGet('/api/upgrade/v2/crypto_stock/top-gainer', p);
   },
-  stock_company: ({ symbol }) => apiGet(`/api/upgrade/v2/crypto_stock/company/${symbol}`),
+  stock_company: async ({ symbol }) => {
+    if (!symbol) return { success: false, errorCode: 400, error: 'stock_company 必填 symbol (例: COIN / MSTR / TSLA)' };
+    try {
+      return await apiGet(`/api/upgrade/v2/crypto_stock/company/${symbol}`);
+    } catch (e) {
+      // 实测 COIN/MSTR 都返 500 "Failed to get company info" — 上游故障
+      if (/^API 5\d\d/.test(e.message)) {
+        return {
+          success: false,
+          errorCode: 500,
+          error: e.message,
+          实测结论: 'stock_company 当前后端不稳: 多个 symbol 实测都返 500。请告知用户"该公司详情接口暂时不可用,可用 stock_quotes 看价格/市值汇总,或联系 AiCoin 客服 (service@aicoin.com) 报修"。',
+        };
+      }
+      throw e;
+    }
+  },
   // coin_treasury
   treasury_entities: (body) => apiPost('/api/upgrade/v2/coin-treasuries/entities', body),
   treasury_history: (body) => apiPost('/api/upgrade/v2/coin-treasuries/history', body),
@@ -104,5 +120,10 @@ cli({
     return apiGet('/api/upgrade/v2/futures/latest-depth', p);
   },
   depth_full: ({ symbol, dbKey }) => apiGet('/api/upgrade/v2/futures/full-depth', { dbKey: symbol || dbKey }),
-  depth_grouped: ({ symbol, dbKey, groupSize }) => apiGet('/api/upgrade/v2/futures/full-depth/grouped', { dbKey: symbol || dbKey, groupSize }),
+  depth_grouped: ({ symbol, dbKey, groupSize }) => {
+    // 实测: groupSize 必填且必须数字字符串, 不传上游 400。
+    // 默认 100 (合理的价格粒度, 主流币 BTC ~0.1%)。
+    const gs = groupSize || '100';
+    return apiGet('/api/upgrade/v2/futures/full-depth/grouped', { dbKey: symbol || dbKey, groupSize: gs });
+  },
 });

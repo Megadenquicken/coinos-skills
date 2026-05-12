@@ -21,6 +21,17 @@ Crypto market data toolkit powered by [AiCoin Open API](https://www.aicoin.com/o
 5. **Reply in the user's language.** Chinese input = all-Chinese response (titles, headings, analysis).
 6. **On 304/403 error — STOP, do NOT retry.** This is a paid feature. Follow the [Paid Feature Guide](#paid-feature-guide) to help the user upgrade.
 7. **更换 API Key 只能用 `update_key` 命令。** 禁止直接编辑 .env、禁止用 gateway/edit 工具改 key。`update_key` 会先验证 key 有效才写入。
+8. **上游故障 (HTTP 5xx / `_note` 含"后端"或"实测结论") 不是用户参数错。** 当返回 JSON 含 `实测结论` 字段时,**必须**把该提示原文转告用户,引导联系 AiCoin 客服 (service@aicoin.com),**不要**让用户改参数重试。
+
+## 2026-05 实测踩坑修复 (已自动处理,这里只是知会)
+
+- `big_orders` / `agg_trades` 实测**仅支持 8 家**: binance(永续+现货) / okcoinfutures(OKX 永续) / bybit / bitget(用 btcumcblusdt) / gate / coinbase / upbit。脚本自动把 `:okex` 转 `:okcoinfutures`, `btcswapusdt:bitget` 转 `btcumcblusdt:bitget`. huobi/kraken/mexc/kucoin 等会被脚本本地拒绝并返清晰提示
+- `funding_rate` AiCoin 只覆盖 BTC,其他币改用 `aicoin-trading exchange.mjs funding_rate`
+- `strategy_signal` 后端 broken: 公开的 signal_key 格式 (`depth_win_one` 等) 实测都返 400。脚本会直接返 `实测结论: AiCoin 接口故障` 提示, **不要重试**
+- `stock_company` / `airdrop detail` / `hl/traders/accounts` 后端偶发 500: 脚本会捕获并返清晰提示告诉用户联系客服, **不要让用户改参数**
+- `ai_analysis` 返空 list 是后端内容池空, 不是接口故障. 脚本会加 `_note` 提示
+- `liq` 是 `liquidation` 的 alias; `ai_coins` 是 `ai_analysis` 的 alias; `exchange_listing_flash` 是 `exchange_listing` 的 alias — 都可用
+- 多个端点的硬上限 100 条 (coin_list / funding_rate / open_interest / historical_depth / trade_data), 没有 pagination, 别问"为啥只有 100 条"
 
 ## Quick Reference
 
@@ -158,13 +169,13 @@ All scripts: `node scripts/<name>.mjs <action> [json-params]`
 | `pair_by_market` | Pairs by exchange | 基础版 | `{"market":"binance"}` |
 | `pair_list` | Pair list | 基础版 | `{"market":"binance","currency":"USDT"}` |
 | `grayscale_trust` | Grayscale trust | 标准版 | None |
-| `gray_scale` | Grayscale holdings | 标准版 | `{"coins":"btc,eth"}` |
+| `gray_scale` | Grayscale holdings (脚本自动把 BTC/ETH 转 bitcoin/ethereum) | 标准版 | `{"coins":"bitcoin,ethereum"}` |
 | `signal_alert` | Signal alerts | 标准版 | None |
 | `signal_config` | Alert config | 标准版 | `{"language":"cn"}` |
-| `strategy_signal` | Strategy signal | 标准版 | `{"signal_key":"depth_win_one"}` |
+| `strategy_signal` | ⚠️ **后端 broken**: SKILL.md 推荐参数实测全 400, agent 调用会拿到 `实测结论` 提示, 不要重试 | 标准版 | (broken) |
 | `change_signal` | Anomaly signal | 标准版 | `{"type":"1"}` |
-| `big_orders` | Whale orders | 标准版 | `{"symbol":"btcswapusdt:binance"}` |
-| `agg_trades` | Aggregated large trades | 标准版 | `{"symbol":"btcswapusdt:binance"}` |
+| `big_orders` | Whale orders. ⚠️ 仅支持 8 家 (binance/okcoinfutures/bybit/bitget/gate/coinbase/upbit). OKX 永续用 `okcoinfutures` 不是 `okex` (脚本自动转), bitget 永续 symbol 也自动转 `btcumcblusdt` | 标准版 | `{"symbol":"btcswapusdt:binance"}` |
+| `agg_trades` | 同 big_orders 覆盖范围。**注: bybit agg_trades 当前空数据** | 标准版 | `{"symbol":"btcswapusdt:binance"}` |
 | `liquidation` | Liquidation data | 高级版 | `{"type":"1","coinKey":"bitcoin"}` |
 | `signal_alert_list` | Alert list | 专业版 | None |
 | `stock_market` | Crypto stocks | 专业版 | None |

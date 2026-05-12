@@ -2,6 +2,15 @@
 // AiCoin News & Flash CLI
 import { apiGet, cli } from '../lib/aicoin-api.mjs';
 
+function exchangeListingImpl({ language, memberIds, page_size, pageSize } = {}) {
+  const p = {};
+  if (language) p.language = language;
+  if (memberIds) p.memberIds = memberIds;
+  const ps = page_size || pageSize;
+  if (ps) p.pageSize = ps;
+  return apiGet('/api/v2/content/exchange-listing-flash', p);
+}
+
 cli({
   news_list: ({ page, page_size, pageSize = '20' } = {}) => {
     const p = { pageSize: page_size || pageSize };
@@ -25,12 +34,7 @@ cli({
     if (createtime) p.createtime = createtime;
     return apiGet('/api/v2/content/flashList', p);
   },
-  exchange_listing: ({ language, memberIds, page_size, pageSize } = {}) => {
-    const p = {};
-    if (language) p.language = language;
-    if (memberIds) p.memberIds = memberIds;
-    const ps = page_size || pageSize;
-    if (ps) p.pageSize = ps;
-    return apiGet('/api/v2/content/exchange-listing-flash', p);
-  },
+  exchange_listing: exchangeListingImpl,
+  // alias: SKILL.md 早期用 exchange_listing_flash, 实际 action 是 exchange_listing
+  exchange_listing_flash: exchangeListingImpl,
 });

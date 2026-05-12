@@ -19,6 +19,18 @@ Hyperliquid whale tracking and analytics powered by [AiCoin Open API](https://ww
 3. **NEVER run `env` or `printenv`** — leaks API secrets.
 4. **Scripts auto-load `.env`** — never pass credentials inline.
 5. **On 304/403 error — STOP, do NOT retry.** Guide user to upgrade (see Paid Feature Guide at bottom).
+6. **上游故障 (返 JSON 含 `实测结论` 字段) 把提示原文给用户,引导联系 AiCoin 客服 (service@aicoin.com),不要让用户改参数重试。**
+
+## 2026-05 实测踩坑修复 (已自动处理)
+
+- `portfolio` window **仅支持** `day / week / month / allTime` 四个值, 其他 (`perpAllTime` 等) 上游 400。脚本本地校验, 默认 `day`
+- `best_trades / performance / pnls` 必填 `period`, 脚本默认 `"30"` (30 天)
+- `max_drawdown / net_flow` 必填 `days`, 脚本默认 `"30"`
+- `liq_top_positions / taker_delta / top_trades / current_pnl / current_executions` 必填 `interval`, 脚本默认 `"1h"`
+- `completed_pos_history / completed_pnl / completed_executions` 实测**按 positionId 取数**, 用 address+coin 调一律 'position not found'。脚本在 catch 里给提示, agent 应改用 `completed_trades / fills / pnls` 等替代
+- 这三个 completed 端点还必填 `startTime` 或 `endTime` 之一 (ms epoch), 脚本会给清晰提示
+- `hl/traders/accounts` 后端偶发 500, 脚本会捕获并提示改用 `statistics + batch_clearinghouse_state`
+- 单地址端点缺 address 时脚本本地拦截, 不再产生 `traders/undefined/...` 这种错误 URL
 
 ## Setup
 

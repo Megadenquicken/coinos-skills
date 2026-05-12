@@ -25,17 +25,52 @@ const SYMBOL_ALIASES = {
   'xrp': 'xrpswapusdt:binance', 'xrpusdt': 'xrpswapusdt:binance',
 };
 
+// AiCoin 内部各家平台的 perp/spot 命名不统一。已知 platform 坑:
+//  - OKX 永续是 `okcoinfutures` 不是 `okex` (后者是 OKX 现货)
+//  - Bitget 永续是 `btcumcblusdt:bitget` 不是 `btcswapusdt:bitget`
+// 用户/模型常传错的形式自动纠正,避免 304 "无效的交易对"。
+function fixPlatformAlias(s) {
+  if (!s || !s.includes(':')) return s;
+  // OKX 永续路径修正: 凡是 "*swap*:okex" 自动改成 ":okcoinfutures"
+  if (/swap.*:okex$/i.test(s)) {
+    return s.replace(/:okex$/i, ':okcoinfutures');
+  }
+  // Bitget 永续 symbol 修正: btcswapusdt:bitget → btcumcblusdt:bitget,
+  // ethswapusdt:bitget → ethumcblusdt:bitget 等
+  if (/swapusdt:bitget$/i.test(s)) {
+    return s.replace(/swapusdt:bitget$/i, 'umcblusdt:bitget');
+  }
+  return s;
+}
+
 function resolveSymbol(symbol) {
   if (!symbol) return symbol;
-  // Already in correct format (contains colon)
-  if (symbol.includes(':')) return symbol;
+  // Already in correct format (contains colon) — but still fix known platform aliases
+  if (symbol.includes(':')) return fixPlatformAlias(symbol);
   const key = symbol.toLowerCase().replace(/[\s/]/g, '');
-  return SYMBOL_ALIASES[key] || symbol;
+  return fixPlatformAlias(SYMBOL_ALIASES[key] || symbol);
 }
 
 // dbkey alias (same format as symbol for most cases)
 function resolveDbkey(dbkey) {
   return resolveSymbol(dbkey);
+}
+
+async function aiAnalysisImpl({ coin_keys, language }) {
+  let keys = coin_keys;
+  if (typeof keys === 'string') {
+    try { keys = JSON.parse(keys); } catch { keys = [keys]; }
+  }
+  if (!Array.isArray(keys)) keys = [keys];
+  const body = { coinKeys: keys };
+  if (language) body.language = language;
+  const json = await apiPost('/api/v2/content/ai-coins', body);
+  // 实测: 端点返回 success:true 但 data.list 经常为空(后端内容池滞后)。
+  // 给 agent 明确提示, 避免误判为"接口故障"或"参数错"。
+  if (json && json.success !== false && Array.isArray(json.data?.list) && json.data.list.length === 0) {
+    json._note = 'AI 解读内容当前为空。这是 AiCoin 后端内容池尚未产出该币种解读,不是接口故障也不是参数错。请告知用户"AI 解读暂未生成,可稍后重试或换其他币种"。';
+  }
+  return json;
 }
 
 cli({
@@ -53,16 +88,9 @@ cli({
   coin_list: () => apiGet('/api/v2/coin'),
   coin_ticker: ({ coin_list }) => apiGet('/api/v2/coin/ticker', { coin_list }),
   coin_config: ({ coin_list }) => apiGet('/api/v2/coin/config', { coin_list }),
-  ai_analysis: ({ coin_keys, language }) => {
-    let keys = coin_keys;
-    if (typeof keys === 'string') {
-      try { keys = JSON.parse(keys); } catch { keys = [keys]; }
-    }
-    if (!Array.isArray(keys)) keys = [keys];
-    const body = { coinKeys: keys };
-    if (language) body.language = language;
-    return apiPost('/api/v2/content/ai-coins', body);
-  },
+  ai_analysis: aiAnalysisImpl,
+  // alias: SKILL.md 早期用 ai_coins, 实际 action 名是 ai_analysis。保留兼容。
+  ai_coins: aiAnalysisImpl,
   // coin_funding_rate (AiCoin API only supports BTC)
   funding_rate: ({ symbol, interval = '8h', weighted, limit = '100', start_time, end_time }) => {
     const resolved = resolveSymbol(symbol);

@@ -53,6 +53,18 @@ function sign() {
   return { AccessKeyId: KEY, SignatureNonce: nonce, Timestamp: ts, Signature: sig };
 }
 
+// 标记后端 / 网关上游故障，给 agent 明确文本提示去引导用户联系客服，
+// 避免 agent 把临时上游故障描述为"你的参数错"。
+function upstreamFaultHint(status, path) {
+  if (status >= 500 && status < 600) {
+    if (status === 502 || status === 503 || status === 504) {
+      return `\n【AiCoin 网关临时故障 HTTP ${status}】端点 ${path}。建议: 等 1-2 分钟后重试；如仍失败，请告知用户"AiCoin 接口暂时不可用，请联系 AiCoin 客服 (service@aicoin.com / 官网在线客服) 反馈，并附上请求时间和端点"。不要把该错误描述为用户参数问题。`;
+    }
+    return `\n【AiCoin 后端异常 HTTP ${status}】端点 ${path}。该接口当前不可用，**不是用户参数错**。请明确告诉用户："这是 AiCoin 后端接口故障，agent 无法解决；请联系 AiCoin 客服 (service@aicoin.com) 反馈，附上请求时间和端点名"。不要重试同一参数。`;
+  }
+  return '';
+}
+
 export async function apiGet(path, params = {}) {
   const qs = new URLSearchParams({ ...params, ...sign() });
   const res = await fetch(`${BASE}${path}?${qs}`, { signal: AbortSignal.timeout(30000) });
@@ -69,6 +81,8 @@ export async function apiGet(path, params = {}) {
       }
     } else if (res.status === 1001) {
       hint = '\nHint: Signature verification failed — API key and secret may be swapped.';
+    } else if (res.status >= 500) {
+      hint = upstreamFaultHint(res.status, path);
     }
     throw new Error(`API ${res.status}: ${text}${hint}`);
   }
@@ -126,8 +140,23 @@ export async function apiPost(path, body = {}) {
     body: JSON.stringify({ ...body, ...sign() }),
     signal: AbortSignal.timeout(30000),
   });
-  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
-  return res.json();
+  if (!res.ok) {
+    const text = await res.text();
+    const hint = res.status >= 500 ? upstreamFaultHint(res.status, path) : '';
+    throw new Error(`API ${res.status}: ${text}${hint}`);
+  }
+  const json = await res.json();
+  // 与 apiGet 对齐：success=false 且 errorCode 304/403 时识别付费 vs 参数错
+  if (json.success === false && (json.errorCode === 304 || json.errorCode === 403)) {
+    const errText = String(json.error || json.message || '');
+    const isParamError = /无效|不存在|不支持|参数|invalid|unsupported|missing/i.test(errText);
+    if (!isParamError) {
+      json.付费功能提示 = '此功能需要付费订阅，请勿重试。升级地址 https://www.aicoin.com/opendata';
+    } else {
+      json.参数错误提示 = `调用失败：${errText}。请检查参数格式，不要重试同一个错误参数。`;
+    }
+  }
+  return json;
 }
 
 // CLI helper: parse args and run

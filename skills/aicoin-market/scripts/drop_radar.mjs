@@ -61,7 +61,9 @@ cli({
     return apiGet('/api/upgrade/v2/content/drop-radar/status-changes', p);
   },
   tweets: ({ keywords, page_size, last_id, lan } = {}) => {
-    const p = { keywords };
+    // 实测: 不传 keywords 上游会 502 (而不是 400),让 agent 误判为接口故障。
+    // 默认填 "airdrop" 拿一份通用推文列表,agent 后续可自定义。
+    const p = { keywords: keywords || 'airdrop' };
     if (page_size) p.page_size = page_size;
     if (last_id) p.last_id = last_id;
     if (lan) p.lan = lan;
