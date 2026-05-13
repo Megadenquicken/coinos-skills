@@ -2,8 +2,38 @@
 // AiCoin Drop Radar (OpenData) CLI
 import { apiGet, cli } from '../lib/aicoin-api.mjs';
 
+// drop_radar 的 itemName / name / oName / entityName / pTitle / siteName 等字段是
+// stringified JSON {"tw_value":...,"en_value":...,"cn_value":...,"ja_value":...,"vn_value":...,"ko_value":...}
+// 6 国语言. agent 拿到字符串当显示就直接漏底 (用户看到一坨 JSON)。
+// 2026-05-13 P0 #3 dogfood: SDK 自动 parse 一层, 默认拍平到中文 (cn_value),
+// 原 stringified 保留到 _i18n_<key> 字段方便 agent 取其他语言。
+function parseI18nFields(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(parseI18nFields);
+  const out = { ...obj };
+  for (const key of Object.keys(out)) {
+    const v = out[key];
+    if (typeof v === 'string' && v.length > 8 && v.startsWith('{') && v.includes('cn_value')) {
+      try {
+        const parsed = JSON.parse(v);
+        if (parsed && typeof parsed === 'object' && 'cn_value' in parsed) {
+          out[key] = parsed.cn_value || parsed.en_value || v;
+          out[`_i18n_${key}`] = parsed;
+          continue;
+        }
+      } catch {}
+    }
+    if (v && typeof v === 'object') {
+      out[key] = parseI18nFields(v);
+    }
+  }
+  return out;
+}
+
 cli({
-  list: ({ page, page_size, status, activity_type, reward_type, min_total_raise, max_total_raise, created_at, keyword, board_keys, eco_keys, sort_by, sort_order, lan } = {}) => {
+  // 2026-05-13 P1 #4 dogfood 复测: 整个 list 端点对**任何** sort_by 都 500,
+  // 不只 sort_by="hot" (此前 wrapper 只 catch hot 是不全的)。改成任何 sort_by 都给同样提示。
+  list: async ({ page, page_size, status, activity_type, reward_type, min_total_raise, max_total_raise, created_at, keyword, board_keys, eco_keys, sort_by, sort_order, lan } = {}) => {
     const p = {};
     if (page) p.page = page;
     if (page_size) p.page_size = page_size;
@@ -19,7 +49,21 @@ cli({
     if (sort_by) p.sort_by = sort_by;
     if (sort_order) p.sort_order = sort_order;
     if (lan) p.lan = lan;
-    return apiGet('/api/upgrade/v2/content/drop-radar/list', p);
+    try {
+      return parseI18nFields(await apiGet('/api/upgrade/v2/content/drop-radar/list', p));
+    } catch (e) {
+      // 实测: 传任何 sort_by 都触发 500 (不只 "hot"). 不传 sort_by 默认排序正常。
+      if (sort_by && /^API 5\d\d/.test(e.message || '')) {
+        return {
+          success: false,
+          errorCode: 500,
+          error: e.message,
+          实测结论: `drop_radar.list 传 sort_by="${sort_by}" 后端返 500 (2026-05-13 dogfood 复测: 任何 sort_by 值都触发, 不只 "hot")。**不要重试**, 也不要当成参数错。`,
+          替代方案: '不传 sort_by 走默认排序 (默认按热度/活跃度排), 已能拿到 1060+ 条数据。如确需特定排序请联系 AiCoin 客服 service@aicoin.com 报修。',
+        };
+      }
+      throw e;
+    }
   },
   detail: async ({ airdrop_id, lan } = {}) => {
     if (!airdrop_id) return { error: 'airdrop_id is required. Use "list" action first to find valid IDs.' };
@@ -44,42 +88,44 @@ cli({
       }
       return { error: `Project not found or invalid airdrop_id "${airdrop_id}". Use "list" to browse available projects.`, detail: detail.error };
     }
-    return { ...detail, team: team.data || team, x_following: xFollowing.data || xFollowing };
+    return parseI18nFields({ ...detail, team: team.data || team, x_following: xFollowing.data || xFollowing });
   },
-  widgets: ({ lan } = {}) => {
+  widgets: async ({ lan } = {}) => {
     const p = {};
     if (lan) p.lan = lan;
-    return apiGet('/api/upgrade/v2/content/drop-radar/widgets', p);
+    return parseI18nFields(await apiGet('/api/upgrade/v2/content/drop-radar/widgets', p));
   },
-  filters: ({ lan } = {}) => {
+  filters: async ({ lan } = {}) => {
     const p = {};
     if (lan) p.lan = lan;
-    return apiGet('/api/upgrade/v2/content/drop-radar/filters', p);
+    return parseI18nFields(await apiGet('/api/upgrade/v2/content/drop-radar/filters', p));
   },
-  events: ({ airdrop_id } = {}) => {
-    return apiGet('/api/upgrade/v2/content/drop-radar/events', { airdrop_id });
+  // 2026-05-13 P0 #3: events / x_following / team 返的 itemName / name / oName 等字段是
+  // stringified i18n JSON, SDK 自动 parse 一层, agent 不用再 JSON.parse。
+  events: async ({ airdrop_id } = {}) => {
+    return parseI18nFields(await apiGet('/api/upgrade/v2/content/drop-radar/events', { airdrop_id }));
   },
-  team: ({ airdrop_id } = {}) => {
-    return apiGet('/api/upgrade/v2/content/drop-radar/team', { airdrop_id });
+  team: async ({ airdrop_id } = {}) => {
+    return parseI18nFields(await apiGet('/api/upgrade/v2/content/drop-radar/team', { airdrop_id }));
   },
-  x_following: ({ airdrop_id } = {}) => {
-    return apiGet('/api/upgrade/v2/content/drop-radar/x-following', { airdrop_id });
+  x_following: async ({ airdrop_id } = {}) => {
+    return parseI18nFields(await apiGet('/api/upgrade/v2/content/drop-radar/x-following', { airdrop_id }));
   },
-  status_changes: ({ days, page, page_size, lan } = {}) => {
+  status_changes: async ({ days, page, page_size, lan } = {}) => {
     const p = {};
     if (days) p.days = days;
     if (page) p.page = page;
     if (page_size) p.page_size = page_size;
     if (lan) p.lan = lan;
-    return apiGet('/api/upgrade/v2/content/drop-radar/status-changes', p);
+    return parseI18nFields(await apiGet('/api/upgrade/v2/content/drop-radar/status-changes', p));
   },
-  tweets: ({ keywords, page_size, last_id, lan } = {}) => {
+  tweets: async ({ keywords, page_size, last_id, lan } = {}) => {
     // 实测: 不传 keywords 上游会 502 (而不是 400),让 agent 误判为接口故障。
     // 默认填 "airdrop" 拿一份通用推文列表,agent 后续可自定义。
     const p = { keywords: keywords || 'airdrop' };
     if (page_size) p.page_size = page_size;
     if (last_id) p.last_id = last_id;
     if (lan) p.lan = lan;
-    return apiGet('/api/upgrade/v2/content/drop-radar/tweets', p);
+    return parseI18nFields(await apiGet('/api/upgrade/v2/content/drop-radar/tweets', p));
   },
 });
