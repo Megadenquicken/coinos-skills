@@ -38,7 +38,7 @@ node scripts/aicoin.mjs hyperliquid/whales/open-positions '{"coin":"BTC"}'
 | 大户当前持仓 | `hyperliquid/whales/open-positions '{"coin":"BTC","top_by":"position-value"}'` |
 | 大户最新动作 | `hyperliquid/whales/latest-events '{"limit":20}'` |
 | 大户多空方向 / 历史多空比 | `hyperliquid/whales/directions '{"coin":"BTC"}'` ／ `hyperliquid/whales/history-long-ratio` |
-| 清算历史 / 统计 | `hyperliquid/liquidations/history '{"coin":"BTC"}'` ／ `hyperliquid/liquidations/stat '{"coin":"BTC"}'` |
+| 清算历史 / 统计 | `hyperliquid/liquidations/history '{"coin":"BTC","interval":"1d"}'` ／ `hyperliquid/liquidations/stat '{"coin":"BTC","interval":"1d"}'` —— 问"近 24h"务必传 `interval`，默认窗口很短会返回全 0 |
 | 大额待清算仓位 | `hyperliquid/liquidations/top-positions '{"coin":"BTC","interval":"1d"}'` |
 | 持仓量 汇总 / 排名 / 历史 | `hyperliquid/open-interest/summary` ／ `hyperliquid/open-interest/top-coins` ／ `hyperliquid/open-interest/history '{"coin":"BTC"}'` |
 | 主动买卖差 / 带主动量 K 线 | `hyperliquid/accumulated-taker-delta '{"coin":"BTC"}'` ／ `hyperliquid/klines-with-taker-volume '{"coin":"BTC","interval":"4h"}'` |

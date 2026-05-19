@@ -34,26 +34,26 @@ node scripts/aicoin.mjs market/ticker '{"coin_key":"bitcoin","market":"binance"}
 
 | 想查什么 | 接口 + 例子 |
 |---|---|
-| 币价 / 涨跌 / 市值 / 净流入 | `coins/tickers '{"coin_key":"bitcoin,ethereum,solana"}'` |
+| 币价 / 涨跌 / 市值 / 净流入 | `coins/tickers '{"coin_key":"bitcoin,ethereum"}'` —— `degree_24h_usd` / `degree_7day_usd` 是 24h / 7 天涨跌幅(%) |
 | 单交易对实时行情 | `market/ticker '{"coin_key":"bitcoin","market":"binance"}'` |
 | K 线 | `market/klines '{"coin_key":"bitcoin","market":"binance","interval":"1h","limit":100}'` |
-| 搜币种（拿准确 coin_key） | `coins/search '{"query":"PEPE"}'` |
+| 搜币种 / 查某币在哪些交易所 | `coins/search '{"query":"PEPE"}'` —— 每条结果带 `db_keys`，列出该币跨交易所的全部交易对 |
 | 币种详情 / 简介 | `coins/detail '{"coin_key":"bitcoin"}'` |
 | 全部币种 / 全部交易所 | `coins '{"limit":100}'` ／ `markets` |
 | 某交易所全部交易对行情 | `market/tickers '{"market":"binance"}'` |
 | 交易对列表 | `pairs '{"market":"binance"}'` |
 | 热门赛道币 | `markets/hot-coins '{"tab_key":"defi"}'` |
-| 资金费率（8h 结算） | `derivatives/funding-rates '{"coin_key":"bitcoin","market":"binance"}'` |
+| 资金费率 | `derivatives/funding-rates '{"coin_key":"bitcoin","market":"binance"}'` —— 返回 8h OHLC 序列，`close` 是当期结算费率（小数，×100 得百分比） |
 | 多空比 | `derivatives/long-short-ratio '{"coin_key":"bitcoin","market":"binance"}'` ／ 汇总 `derivatives/long-short-ratio/summary` |
 | 合约持仓量排名 | `derivatives/open-interest/ranking` |
-| 清算地图 / 清算汇总 | `derivatives/liquidations/map '{"coin_key":"bitcoin","window":"24h"}'` ／ `derivatives/liquidations/summary` |
+| 清算地图 / 清算汇总 | `derivatives/liquidations/map '{"coin_key":"bitcoin","market":"binance","window":"24h"}'` ／ `derivatives/liquidations/summary` |
 | 大单 / 大单成交 | `market/big-orders '{"coin_key":"bitcoin","market":"binance"}'` ／ `market/aggregate-trades '{"coin_key":"bitcoin","market":"binance"}'` |
 | 订单簿深度 | `market/orderbook/latest-depth '{"coin_key":"bitcoin","market":"binance"}'` |
 | 资讯文章 / 快讯 | `content/articles` ／ `content/newsflashes` ／ 行业 `content/newsflashes/industry` |
 | 搜快讯 | `content/newsflashes/search '{"query":"bitcoin"}'` |
 | 推特/X | `content/social/x/posts/latest` ／ 搜 `content/social/x/posts/search '{"query":"bitcoin"}'` |
-| 空投 | `airdrops '{"source":"all"}'` ／ 详情 `airdrops/detail '{"type":"hodler","project_id":"..."}'` |
-| 项目雷达 Drop Radar | `drop-radar/projects` ／ 详情 `drop-radar/projects/detail '{"project_id":"..."}'` |
+| 空投项目（有哪些值得做） | `drop-radar/projects` —— 项目最全；详情 `drop-radar/projects/detail '{"project_id":"..."}'` |
+| 交易所空投 / 空投日历 | `airdrops '{"source":"all"}'`（交易所活动，可能为空）／ `airdrops/calendar '{"year":2026,"month":5}'` |
 | 上市公司持币（国库） | `treasuries/summary '{"coin_key":"bitcoin"}'` ／ 实体 `treasuries/entities '{"coin_key":"bitcoin"}'` |
 | 灰度持仓 | `institutions/grayscale/holdings` |
 | 加密概念股 / 全球股指 | `equities/crypto-exposure/quotes` ／ `macro/stock-indices` |
