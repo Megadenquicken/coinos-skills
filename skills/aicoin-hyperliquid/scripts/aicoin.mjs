@@ -48,26 +48,28 @@ async function showCatalog(filter) {
   const { endpoints, live } = await fetchCatalog();
   endpoints.sort((a, b) => a.path.localeCompare(b.path));
 
-  // Single endpoint detail.
-  const exact = endpoints.find((e) => rel(e.path) === filter || e.path === filter);
-  if (exact) return out({ source: live ? 'live' : 'snapshot', endpoint: exact });
-
-  // A group's endpoints, with params.
   if (filter) {
+    // Group match wins over a same-named bare endpoint (e.g. `indexes` is both
+    // the group and the path /api/v3/indexes) — the group view is more useful.
     const inGroup = endpoints.filter((e) => groupOf(e.path) === filter);
-    if (!inGroup.length) return out({ ok: false, error: { code: 'no_match', message: `没有 "${filter}" 分组或接口` }, _hint: '不带参数跑 catalog 看全部分组。' });
-    const lines = [`# ${filter} (${inGroup.length} 个接口)　来源: ${live ? '线上' : '本地快照'}\n`];
-    for (const e of inGroup) {
-      lines.push(`${e.method} ${rel(e.path)}  —  ${e.summary || ''}`);
-      for (const p of e.params || []) {
-        const bits = [p.in, p.required ? '必填' : '可选', p.type];
-        if (p.enum) bits.push('枚举:' + p.enum.join('/'));
-        if (p.example) bits.push('例:' + p.example);
-        lines.push(`    ${p.name}  (${bits.filter(Boolean).join(', ')})  ${p.desc || ''}`);
+    if (inGroup.length) {
+      const lines = [`# ${filter} (${inGroup.length} 个接口)　来源: ${live ? '线上' : '本地快照'}\n`];
+      for (const e of inGroup) {
+        lines.push(`${e.method} ${rel(e.path)}  —  ${e.summary || ''}`);
+        for (const p of e.params || []) {
+          const bits = [p.in, p.required ? '必填' : '可选', p.type];
+          if (p.enum) bits.push('枚举:' + p.enum.join('/'));
+          if (p.example) bits.push('例:' + p.example);
+          lines.push(`    ${p.name}  (${bits.filter(Boolean).join(', ')})  ${p.desc || ''}`);
+        }
+        lines.push('');
       }
-      lines.push('');
+      return console.log(lines.join('\n'));
     }
-    return console.log(lines.join('\n'));
+    // Not a group — treat the filter as a single endpoint path.
+    const exact = endpoints.find((e) => rel(e.path) === filter || e.path === filter);
+    if (exact) return out({ source: live ? 'live' : 'snapshot', endpoint: exact });
+    return out({ ok: false, error: { code: 'no_match', message: `没有 "${filter}" 分组或接口` }, _hint: '不带参数跑 catalog 看全部分组。' });
   }
 
   // Full table of contents — grouped, paths + summaries (no params).

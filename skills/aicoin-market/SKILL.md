@@ -44,7 +44,7 @@ node scripts/aicoin.mjs market/ticker '{"coin_key":"bitcoin","market":"binance"}
 | 交易对列表 | `pairs '{"market":"binance"}'` |
 | 热门赛道币 | `markets/hot-coins '{"tab_key":"defi"}'` |
 | 资金费率 | `derivatives/funding-rates '{"coin_key":"bitcoin","market":"binance"}'` —— 返回 8h OHLC 序列，`close` 是当期结算费率（小数，×100 得百分比） |
-| 多空比 | `derivatives/long-short-ratio '{"coin_key":"bitcoin","market":"binance"}'` ／ 汇总 `derivatives/long-short-ratio/summary` |
+| 多空比 | 单交易对历史序列 `derivatives/long-short-ratio '{"coin_key":"bitcoin","market":"binance"}'`；全市场当前汇总 `derivatives/long-short-ratio/summary`（不分币种，别当成某个币的） |
 | 合约持仓量排名 | `derivatives/open-interest/ranking` |
 | 清算地图 / 清算汇总 | `derivatives/liquidations/map '{"coin_key":"bitcoin","market":"binance","window":"24h"}'` ／ `derivatives/liquidations/summary` |
 | 大单 / 大单成交 | `market/big-orders '{"coin_key":"bitcoin","market":"binance"}'` ／ `market/aggregate-trades '{"coin_key":"bitcoin","market":"binance"}'` |

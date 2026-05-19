@@ -103,6 +103,20 @@ export async function request(method, path, params = {}) {
   const text = await res.text();
   let body;
   try { body = JSON.parse(text); } catch { body = { ok: false, error: { code: 'bad_response', message: text.slice(0, 300) } }; }
+  // v3 business endpoints answer with {ok,...}. Auth / quota errors from the
+  // gateway are still legacy-shaped ({success:false,errorCode,error}); fold them
+  // into the same envelope so callers only ever branch on `ok`.
+  if (body && typeof body === 'object' && typeof body.ok !== 'boolean' && (res.status >= 400 || body.success === false)) {
+    body = {
+      ok: false,
+      data: null,
+      error: {
+        code: body.errorCode != null ? String(body.errorCode) : String(res.status),
+        message: body.error || body.message || body.msg || `HTTP ${res.status}`,
+      },
+      meta: {},
+    };
+  }
   return { httpStatus: res.status, body };
 }
 
