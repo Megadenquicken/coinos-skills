@@ -77,11 +77,21 @@ node scripts/aicoin.mjs market/ticker '{"coin_key":"bitcoin","market":"binance"}
 
 内置一个免费 key，开箱即用，够查行情、K 线、币种、新闻这些。资金费率、大单、清算、HL 鲸鱼、国库等需要付费套餐 —— 某接口返回 403 就是套餐不够。
 
-用自己的 key：写进 `.env`，或 `node scripts/aicoin.mjs set-key <key_id> <secret>`（会先校验再写入，别手动编辑 .env）。
+用自己的 key —— 推荐 `set-key` 命令（会先验证再写入 `.env`，**禁止手编 .env**）：
+
+```bash
+node scripts/aicoin.mjs set-key <key_id> <secret>
+# 或直接把 AiCoin 后台 JSON 整段喂进来，脚本认字段名：
+node scripts/aicoin.mjs set-key '{"api_key":"<id>","access_key":"<secret>"}'
+```
+
+⚠️ **AiCoin 后台字段名反直觉**：JSON 里的 `api_key` 其实是公开 ID（对应 `AICOIN_ACCESS_KEY_ID`），`access_key` 才是 SECRET（对应 `AICOIN_ACCESS_SECRET`）。脚本帮你按这个映射存，不用人脑反向。
+
+环境变量名（写 `.env` 或 export 用）：
 
 ```
-AICOIN_ACCESS_KEY_ID=your-key
-AICOIN_ACCESS_SECRET=your-secret
+AICOIN_ACCESS_KEY_ID=...   # = AiCoin 后台的 api_key
+AICOIN_ACCESS_SECRET=...   # = AiCoin 后台的 access_key
 ```
 
 **安全说明**：AiCoin API Key 只用于获取市场数据，无法交易、无法读取你在交易所的任何信息。所有密钥只存在本地 `.env`，不上传任何服务器。CoinClaw 用户在 web UI 的 EnvSection 里配置。

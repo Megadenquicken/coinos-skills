@@ -76,7 +76,13 @@ node scripts/aicoin.mjs hyperliquid/whales/open-positions '{"coin":"BTC"}'
 
 ## API Key
 
-内置一个免费 key 可查行情。鲸鱼持仓、清算、交易员分析等需要付费套餐 —— 接口返回 403 就是套餐不够。用自己的 key：写进 `.env`，或 `node scripts/aicoin.mjs set-key <key_id> <secret>`。
+内置一个免费 key 可查行情。鲸鱼持仓、清算、交易员分析等需要付费套餐 —— 接口返回 403 就是套餐不够。
+
+用自己的 key:
+- `node scripts/aicoin.mjs set-key <id> <secret>`
+- 或直接喂 AiCoin 后台 JSON:`set-key '{"api_key":"...","access_key":"..."}'`(脚本认字段名)
+
+⚠️ **AiCoin 后台字段名反直觉**:`api_key` 是 ID(`AICOIN_ACCESS_KEY_ID`)、`access_key` 才是 SECRET(`AICOIN_ACCESS_SECRET`)—— 脚本帮你按这个映射写 .env。
 
 **安全说明**：AiCoin API Key 只用于获取链上分析数据，无法交易。要在 Hyperliquid 上交易需另配钱包私钥（见 aicoin-trading）。密钥只存本地 `.env`。
 

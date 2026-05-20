@@ -126,8 +126,27 @@ const [cmd, ...rest] = process.argv.slice(2);
   if (cmd === 'catalog') return showCatalog(rest[0]);
   if (cmd === 'key') return showKey();
   if (cmd === 'set-key') {
-    if (rest.length < 2) return out({ ok: false, error: { code: 'bad_args', message: '用法: set-key <key_id> <secret>' } });
-    const r = await saveKey(rest[0], rest[1]);
+    let id, secret;
+    const raw = rest.join(' ').trim();
+    if (raw.startsWith('{')) {
+      // JSON 模式:兼容 AiCoin 后台直接拷下来的 {"api_key","access_key"}
+      // 注意 AiCoin 后台命名反直觉 —— `api_key` 是公开 ID,`access_key` 才是 SECRET。
+      // 也兼容 {"access_key_id","access_secret"} 等更直白的命名。
+      try {
+        const j = JSON.parse(raw);
+        id = j.access_key_id || j.accessKeyId || j.key_id || j.api_key || j.key;
+        secret = j.access_secret || j.accessSecret || j.secret_key || j.secret || j.access_key;
+      } catch {
+        return out({ ok: false, error: { code: 'bad_json', message: '参数不是合法 JSON' } });
+      }
+    } else if (rest.length >= 2) {
+      id = rest[0];
+      secret = rest[1];
+    }
+    if (!id || !secret) {
+      return out({ ok: false, error: { code: 'bad_args', message: "用法: set-key <key_id> <secret>  或  set-key '<json>'(JSON 字段名兼容 api_key/access_key、access_key_id/access_secret 等;AiCoin 后台 api_key 是 ID、access_key 是 SECRET)" } });
+    }
+    const r = await saveKey(id, secret);
     return out(r.ok ? { ok: true, message: `key 已保存到 ${r.file}` } : { ok: false, error: { code: 'invalid_key', message: r.error } });
   }
   return callEndpoint(cmd, rest.join(' ').trim() || null);
